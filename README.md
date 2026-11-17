@@ -1,16 +1,12 @@
 # diffusionPack
 
-A Python package for studying diffusion models and building reusable baselines in PyTorch.
+## Abstract
 
-## Purpose
+Diffusion models are widely used in generative modeling and many applied problems. This project aims to build a reusable PyTorch implementation baseline, starting with Denoising Diffusion Probabilistic Models (DDPM). I will study the mathematical relation between unconditional and conditional diffusion and implement the methods based on their original equations. The package is intended to provide baseline models for new conditional tasks, support comparisons with prior work, and help implement methods from papers without public code. It will grow as I study more papers, including work on DDIM, score-based models, classifier-free guidance, flow matching, and drifting models.
 
-diffusionPack is a personal research project. I study diffusion models by reading the original papers and implementing their equations. My goal is to build a common codebase for future research. I want to compare existing methods with new models and make errors in training and sampling easier to trace.
+## Implementation Principles
 
-## Approach
-
-I write the core algorithms myself. I use the original papers and the authors' code as references. AI tools help me check equations, review code, and find errors, but they do not replace my own implementation.
-
-The project starts with DDPM. I plan to add conditional diffusion, DDIM, score-based models, and related methods as I study them.
+I develop this package by reading papers and writing code. I use the original equations and established public implementations as references. Generative AI may help me check equations, find bugs, or write difficult functions. I review AI-assisted code myself and compare it with the papers and reference implementations whenever possible. My goal is to build a codebase that I understand and can use with confidence in future research.
 
 ## Installation
 
@@ -34,6 +30,6 @@ Check the installation:
 python -c "import diffusionpack; print(diffusionpack.__version__)"
 ```
 
-## Current status
+## Current Status
 
 The package structure is available. Model training and sampling are not yet implemented.
