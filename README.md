@@ -16,12 +16,10 @@ Install from GitHub:
 python -m pip install git+https://github.com/Pogjunan/diffusionPack.git
 ```
 
-For local development:
+To update the installed package to the latest GitHub version:
 
 ```bash
-git clone https://github.com/Pogjunan/diffusionPack.git
-cd diffusionPack
-python -m pip install -e .
+python -m pip install --upgrade --force-reinstall git+https://github.com/Pogjunan/diffusionPack.git
 ```
 
 Check the installation:
