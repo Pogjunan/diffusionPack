@@ -1,79 +1,50 @@
-from __future__ import annotations
-
 import math
 import torch
 from torch import nn
 from torch.nn import functional as F
 
 
-def init_module(module: nn.Module, scale: float = 1.0) -> nn.Module:
-    out_ch, in_ch, *kernel = module.weight.shape
-    # fan_avg = (fan_in + fan_out)/2
-    avg_connections = (in_ch + out_ch) * math.prod(kernel) / 2
-    if scale == 0:
-        scale = 1e-10
-    bound = math.sqrt(3 * scale / avg_connections)
-    nn.init.uniform_(module.weight, -bound, bound)
-    if module.bias is not None:
-        nn.init.zeros_(module.bias)
-    return module
-
-
-def conv(in_ch: int, out_ch: int, kernel: int = 3, stride: int = 1, scale: float = 1.0):
-    padding = kernel // 2 if stride == 1 else 0
-    return init_module(nn.Conv2d(in_ch, out_ch, kernel, stride=stride, padding=padding), scale)
-
-
-def linear(in_ch: int, out_ch: int, scale: float = 1.0):
-    return init_module(nn.Linear(in_ch, out_ch), scale)
-
-
-def norm(channels: int) -> nn.GroupNorm:
-    return nn.GroupNorm(32, channels, eps=1e-6)
-
-
-def timestep_embedding(timesteps: torch.Tensor, dim: int) -> torch.Tensor:
-    half = dim // 2
-    if half < 2:
-        raise ValueError('Embedding dim must be at least 4')
-    indices = torch.arange(half, device=timesteps.device, dtype=torch.float32)
-    frequencies = torch.exp(indices * (-math.log(10000.0) / (half - 1)))
-    phases = timesteps.float()[:, None] * frequencies
-    out = torch.cat([phases.sin(), phases.cos()], dim=1)
-    if dim % 2:
-        out = F.pad(out, (0, 1))
-    return out
+def timestep_embedding(timesteps, dim):
+    half = dim // 2  # sin과 cos가 각각 dim의 절반을 채움 (dim=64 → 32+32)
+    i = torch.arange(half, device=timesteps.device, dtype=torch.float32)
+    freq = torch.exp(i * (-math.log(10000.0) / max(half - 1, 1)))
+    angle = timesteps.float()[:, None] * freq[None, :]
+    emb = torch.cat([angle.sin(), angle.cos()], dim=1)
+    return F.pad(emb, (0, dim % 2))
 
 
 class ResBlock(nn.Module):
-    def __init__(self, in_ch: int, out_ch: int, temb_ch: int, dropout: float):
+    def __init__(self, in_ch, out_ch, temb_ch, dropout):
         super().__init__()
-        self.norm1 = norm(in_ch)
-        self.conv1 = conv(in_ch, out_ch)
-        self.emb_proj = linear(temb_ch, out_ch)
-        self.norm2 = norm(out_ch)
+        # GroupNorm: 채널을 32개 그룹으로 나눠 샘플별 평균·분산으로 정규화
+        self.norm1 = nn.GroupNorm(32, in_ch, eps=1e-6)
+        self.conv1 = nn.Conv2d(in_ch, out_ch, 3, padding=1)
+        self.emb_proj = nn.Linear(temb_ch, out_ch)
+        self.norm2 = nn.GroupNorm(32, out_ch, eps=1e-6)
         self.dropout = nn.Dropout(dropout)
-        self.conv2 = conv(out_ch, out_ch, scale=0.0)
-        self.shortcut = linear(in_ch, out_ch) if in_ch != out_ch else nn.Identity()
+        self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1)
+        # ResNet shortcut: 채널 수가 다를 때만 입력을 선형 변환
+        self.shortcut = nn.Linear(in_ch, out_ch) if in_ch != out_ch else nn.Identity()
 
-    def forward(self, x: torch.Tensor, temb: torch.Tensor) -> torch.Tensor:
+    def forward(self, x, temb):
         h = self.conv1(F.silu(self.norm1(x)))
         h = h + self.emb_proj(F.silu(temb))[:, :, None, None]
         h = self.conv2(self.dropout(F.silu(self.norm2(h))))
-        shortcut = self.shortcut(x.movedim(1, -1)).movedim(-1, 1)
-        return shortcut + h
+        # Linear는 채널을 마지막 차원에서 바꾸므로 [B,C,H,W] ↔ [B,H,W,C]
+        skip = self.shortcut(x.movedim(1, -1)).movedim(-1, 1)
+        return skip + h
 
 
 class AttnBlock(nn.Module):
-    def __init__(self, channels: int):
+    def __init__(self, channels):
         super().__init__()
-        self.norm = norm(channels)
-        self.q = conv(channels, channels, kernel=1)
-        self.k = conv(channels, channels, kernel=1)
-        self.v = conv(channels, channels, kernel=1)
-        self.proj_out = conv(channels, channels, kernel=1, scale=0.0)
+        self.norm = nn.GroupNorm(32, channels, eps=1e-6)
+        self.q = nn.Conv2d(channels, channels, 1)
+        self.k = nn.Conv2d(channels, channels, 1)
+        self.v = nn.Conv2d(channels, channels, 1)
+        self.proj_out = nn.Conv2d(channels, channels, 1)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
         h = self.norm(x)
         channels = x.shape[1]
         q = self.q(h).flatten(2).transpose(1, 2)
@@ -86,9 +57,9 @@ class AttnBlock(nn.Module):
 
 
 class Downsample(nn.Module):
-    def __init__(self, channels: int):
+    def __init__(self, channels):
         super().__init__()
-        self.down = conv(channels, channels, kernel=3, stride=2)
+        self.down = nn.Conv2d(channels, channels, 3, stride=2)
 
     def forward(self, x):
         if x.shape[-2] % 2 or x.shape[-1] % 2:
@@ -97,9 +68,9 @@ class Downsample(nn.Module):
 
 
 class Upsample(nn.Module):
-    def __init__(self, channels: int):
+    def __init__(self, channels):
         super().__init__()
-        self.conv = conv(channels, channels)
+        self.conv = nn.Conv2d(channels, channels, 3, padding=1)
 
     def forward(self, x):
         x = F.interpolate(x, scale_factor=2, mode='nearest')
@@ -122,10 +93,10 @@ class DDPMUNet(nn.Module):
         if resolution % factor:
             raise ValueError(f'resolution {resolution} is not divisible by {factor}')
 
-        self.time_dense0 = linear(base_channels, base_channels * 4)
-        self.time_dense1 = linear(base_channels * 4, base_channels * 4)
+        self.time_dense0 = nn.Linear(base_channels, base_channels * 4)
+        self.time_dense1 = nn.Linear(base_channels * 4, base_channels * 4)
         temb_dim = base_channels * 4
-        self.conv_in = conv(in_channels, base_channels)
+        self.conv_in = nn.Conv2d(in_channels, base_channels, 3, padding=1)
         self.down = nn.ModuleList()
         skip_channels = [base_channels]
         ch = base_channels
@@ -160,10 +131,23 @@ class DDPMUNet(nn.Module):
             if level != 0:
                 self.up.append(nn.ModuleDict({'upsample': Upsample(ch)}))
                 current_res *= 2
-        self.norm_out = norm(ch)
-        self.conv_out = conv(ch, in_channels, scale=0.0)
+        self.norm_out = nn.GroupNorm(32, ch, eps=1e-6)
+        self.conv_out = nn.Conv2d(ch, in_channels, 3, padding=1)
 
-    def forward(self, x: torch.Tensor, t: torch.Tensor):
+        # 원본 DDPM의 fan_avg uniform 초기화 (Xavier), bias=0
+        for layer in self.modules():
+            if isinstance(layer, (nn.Conv2d, nn.Linear)):
+                nn.init.xavier_uniform_(layer.weight)
+                nn.init.zeros_(layer.bias)
+        # Residual/Attention 및 최종 출력은 거의 0에서 시작하도록 함
+        for layer in self.modules():
+            if isinstance(layer, ResBlock):
+                nn.init.xavier_uniform_(layer.conv2.weight, gain=1e-5)
+            elif isinstance(layer, AttnBlock):
+                nn.init.xavier_uniform_(layer.proj_out.weight, gain=1e-5)
+        nn.init.xavier_uniform_(self.conv_out.weight, gain=1e-5)
+
+    def forward(self, x, t):
         if x.shape[1:] != (self.in_channels, self.resolution, self.resolution):
             raise ValueError('Image channels and resolution must match the U-Net configuration')
         if t.shape != (x.shape[0],) or t.dtype not in (torch.int32, torch.int64):
