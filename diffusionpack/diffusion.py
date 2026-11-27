@@ -34,10 +34,9 @@ def q_sample(x_0, t, eps):
 
 def posterior_mean(x_0, x_t, t):
     check_shape(x_0, x_t)
-    denom = 1 - alpha_bars
     return (
-        step_value(alpha_bars_prev.sqrt() * betas / denom, t, x_t) * x_0
-        + step_value(alphas.sqrt() * (1 - alpha_bars_prev) / denom, t, x_t) * x_t
+        step_value(alpha_bars_prev.sqrt() * betas / (1 - alpha_bars), t, x_t) * x_0
+        + step_value(alphas.sqrt() * (1 - alpha_bars_prev) / (1 - alpha_bars), t, x_t) * x_t
     )
 
 
