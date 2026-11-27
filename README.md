@@ -30,4 +30,6 @@ python -c "import diffusionpack; print(diffusionpack.__version__)"
 
 ## Current Status
 
-The package structure is available. Model training and sampling are not yet implemented.
+The initial DDPM equations and a draft PyTorch U-Net are available for review. Full training and reverse sampling are not yet integrated. Exact numerical equivalence with TensorFlow and generation quality have not been established.
+
+Run the local checks from a cloned repository: python -m unittest discover -s test -v.
