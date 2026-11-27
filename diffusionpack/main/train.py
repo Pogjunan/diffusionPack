@@ -42,10 +42,10 @@ def model_settings(preset="light", channels=3):
     )
 
 
-def init_training(model):
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+def init_training(model, lr=learning_rate, warmup=warmup_steps):
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.LambdaLR(
-        optimizer, lambda step: min(step / warmup_steps, 1.0) if warmup_steps else 1.0
+        optimizer, lambda step: min(step / warmup, 1.0) if warmup else 1.0
     )
     ema_model = deepcopy(model).requires_grad_(False).eval()
     return optimizer, scheduler, ema_model
@@ -106,13 +106,14 @@ def get_dataset(args, channels):
     return dataset
 
 
-def save_checkpoint(path, step, model, ema_model, optimizer, scheduler, scaler, config, dataset):
+def save_checkpoint(path, step, model, ema_model, optimizer, scheduler, scaler, config, dataset, training=None):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     state = {
         "step": step,
         "model_config": config,
         "dataset": dataset,
+        "training": training or {},
         "model": model.state_dict(),
         "ema": ema_model.state_dict(),
         "optimizer": optimizer.state_dict(),
@@ -139,8 +140,12 @@ def main():
     parser.add_argument("--dataset", choices=("cifar10", "folder", "fake"), default="cifar10")
     parser.add_argument("--data-root", default="data")
     parser.add_argument("--channels", type=int, choices=(1, 3), default=3)
-    parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--steps", type=int, default=30000)
+    parser.add_argument("--batch-size", type=int, default=8)
+    length = parser.add_mutually_exclusive_group()
+    length.add_argument("--steps", type=int)
+    length.add_argument("--epochs", type=int)
+    parser.add_argument("--lr", type=float)
+    parser.add_argument("--warmup-steps", type=int)
     parser.add_argument("--workers", type=int, default=0)
     parser.add_argument("--max-images", type=int, default=0)
     parser.add_argument("--output")
@@ -153,8 +158,12 @@ def main():
     parser.add_argument("--flip", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
 
-    if args.steps < 1 or args.batch_size < 1 or args.save_every < 1 or args.log_every < 1:
-        parser.error("steps, batch-size, save-every and log-every must be positive")
+    if (args.steps is not None and args.steps < 1 or
+        args.epochs is not None and args.epochs < 1 or
+        args.batch_size < 1 or args.save_every < 1 or args.log_every < 1 or
+        args.lr is not None and args.lr <= 0 or
+        args.warmup_steps is not None and args.warmup_steps < 0):
+        parser.error("Invalid steps, epochs, batch size, learning rate or warmup")
 
     args.output = args.output or (str(Path(args.resume).parent) if args.resume else f"runs/{args.model}_{args.dataset}")
     torch.manual_seed(args.seed)
@@ -163,8 +172,22 @@ def main():
     config = checkpoint["model_config"] if checkpoint else model_settings(args.model, args.channels)
     if checkpoint and checkpoint["dataset"] != args.dataset:
         raise ValueError("The resume checkpoint uses a different dataset type")
+    previous_training = checkpoint.get("training", {}) if checkpoint else {}
+    previous_lr = previous_training.get(
+        "lr", checkpoint["scheduler"]["base_lrs"][0] if checkpoint else learning_rate
+    )
+    previous_warmup = previous_training.get("warmup", warmup_steps)
+    if checkpoint and args.lr is not None and args.lr != previous_lr:
+        raise ValueError("Resume must use the saved learning rate")
+    if checkpoint and args.warmup_steps is not None and args.warmup_steps != previous_warmup:
+        raise ValueError("Resume must use the saved warmup steps")
+    lr = previous_lr if checkpoint else (args.lr if args.lr is not None else learning_rate)
+    warmup = previous_warmup if checkpoint else (
+        args.warmup_steps if args.warmup_steps is not None else warmup_steps
+    )
+    training = {"lr": lr, "warmup": warmup}
     model = DDPMUNet(**config).to(device)
-    optimizer, scheduler, ema_model = init_training(model)
+    optimizer, scheduler, ema_model = init_training(model, lr=lr, warmup=warmup)
     use_amp = args.amp and device.type == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     start_step = 0
@@ -182,10 +205,17 @@ def main():
         dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.workers,
         pin_memory=device.type == "cuda", drop_last=False,
     )
+    steps_per_epoch = len(loader)
+    target_steps = args.steps if args.steps is not None else (
+        args.epochs * steps_per_epoch if args.epochs is not None else 30000
+    )
+    if target_steps <= start_step:
+        raise ValueError(f"Already trained {start_step} steps; target is {target_steps}")
     iterator = iter(loader)
+    print(f"target_steps={target_steps} steps_per_epoch={steps_per_epoch} learning_rate={lr} warmup={warmup}", flush=True)
     print(f"device={device} channels={config['in_channels']} base={config['base_channels']} images={len(dataset)} parameters={sum(p.numel() for p in model.parameters()):,} amp={use_amp}", flush=True)
     checkpoint_path = Path(args.output) / "latest.pt"
-    for step in range(start_step + 1, args.steps + 1):
+    for step in range(start_step + 1, target_steps + 1):
         try:
             batch = next(iterator)
         except StopIteration:
@@ -193,12 +223,13 @@ def main():
             batch = next(iterator)
         images = batch[0] if isinstance(batch, (list, tuple)) else batch
         images = images.to(device, non_blocking=True)
+        applied_lr = optimizer.param_groups[0]["lr"]
         loss = train_step(model, images, optimizer, scheduler, ema_model, scaler=scaler)
         if step == 1 or step % args.log_every == 0:
             vram = f" vram={torch.cuda.max_memory_allocated(device) / 1024**3:.2f}GiB" if device.type == "cuda" else ""
-            print(f"step={step} loss={loss.item():.6f} lr={optimizer.param_groups[0]['lr']:.8f}{vram}", flush=True)
-        if step % args.save_every == 0 or step == args.steps:
-            save_checkpoint(checkpoint_path, step, model, ema_model, optimizer, scheduler, scaler, config, args.dataset)
+            print(f"step={step}/{target_steps} epoch={step / steps_per_epoch:.2f} loss={loss.item():.6f} lr={applied_lr:.8f}{vram}", flush=True)
+        if step % args.save_every == 0 or step == target_steps:
+            save_checkpoint(checkpoint_path, step, model, ema_model, optimizer, scheduler, scaler, config, args.dataset, training=training)
             print(f"saved={checkpoint_path}", flush=True)
 
 

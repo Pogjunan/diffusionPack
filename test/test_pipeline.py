@@ -14,7 +14,7 @@ from diffusionpack import diffusion
 from diffusionpack.backbone import DDPMUNet
 from diffusionpack.main.inference import main as inference_main
 from diffusionpack.main.train import (
-    FolderImages, choose_device, get_dataset, init_training,
+    FolderImages, choose_device, get_dataset, init_training, main as train_main,
     model_settings, save_checkpoint, train_step,
 )
 
@@ -82,6 +82,27 @@ class TestPipeline(unittest.TestCase):
         self.assertNotEqual(model.weight.item(), original.item())
         self.assertTrue(torch.isfinite(ema_model.weight))
         self.assertAlmostEqual(optimizer.param_groups[0]["lr"], 8e-8)
+
+    def test_epochs_learning_rate_and_resume_cli(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "latest.pt"
+            args = ["train", "--dataset", "fake", "--max-images", "4", "--batch-size", "2",
+                    "--epochs", "1", "--lr", "0.0003", "--device", "cpu", "--save-every", "2",
+                    "--output", folder]
+            with patch.object(sys, "argv", args):
+                train_main()
+            saved = torch.load(path, map_location="cpu", weights_only=True)
+            self.assertEqual(saved["step"], 2)
+            self.assertEqual(saved["training"]["lr"], 0.0003)
+            resume = ["train", "--dataset", "fake", "--max-images", "4", "--batch-size", "2",
+                      "--epochs", "2", "--device", "cpu", "--save-every", "2",
+                      "--resume", str(path)]
+            with patch.object(sys, "argv", resume):
+                train_main()
+            resumed = torch.load(path, map_location="cpu", weights_only=True)
+            self.assertEqual(resumed["step"], 4)
+            self.assertEqual(resumed["training"]["lr"], 0.0003)
+            self.assertEqual(resumed["scheduler"]["last_epoch"], 4)
 
     def test_save_and_restore(self):
         model = TinyDenoiser()
