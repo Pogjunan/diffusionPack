@@ -1,0 +1,9 @@
+from .restore import restore_loss, restore_sample
+
+
+def prediction_loss(model, future, history):
+    return restore_loss(model, future, history)
+
+
+def prediction_sample(model, history, *, progress=False):
+    return restore_sample(model, history, progress=progress)
