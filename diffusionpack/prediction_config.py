@@ -5,7 +5,7 @@ class PredictionTrainConfig(Config):
     manifest = "data/forecast/train.csv"
     model = "light"
     resolution = 32
-    channel_mult = (1, 2, 2, 2)
+    channel_mult = None
     history_steps = 5
     map_channels = 1
     cadence_minutes = 30
@@ -27,6 +27,7 @@ class PredictionTrainConfig(Config):
     amp = True
     progress = True
     history_lag_minutes = 0
+    base_channels = None
 
 
 class PredictionInferenceConfig(Config):

@@ -23,6 +23,7 @@ class RestoreTrainConfig(Config):
     device = "auto"
     amp = True
     progress = True
+    base_channels = None
 
 
 class RestoreInferenceConfig(Config):

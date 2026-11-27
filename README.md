@@ -28,6 +28,38 @@ In [run.py](run.py), set `task` to `"unconditional"`, `"restore"` or `"predictio
 - Restoration uses Palette's channel concatenation and conditional noise loss with the DDPM timestep and schedule. [Palette, Section 3](https://arxiv.org/html/2111.05826v2#S3) · [Independent PyTorch implementation](https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/136b29f58d0af6e5db9f3655d2891f5a855fcdaa/models/network.py)
 - Prediction extends the same denoiser to a fixed history of spatial maps. [Forecast dataset](diffusionpack/main/prediction_data.py) · [Related work on past-frame conditioning](https://arxiv.org/abs/2205.09853)
 
+## Image Resolution
+
+Set one square `resolution` per training run. The U-Net automatically adds
+downsampling levels for large inputs when `channel_mult` is not supplied.
+The 32x32 architecture is unchanged.
+
+| Resolution | Channel multipliers | Smallest feature map |
+| --- | --- | --- |
+| 32 | (1, 2, 2, 2) | 4x4 |
+| 512 | (1, 2, 2, 2, 2, 2) | 16x16 |
+| 1024 | (1, 2, 2, 2, 2, 2, 2) | 16x16 |
+
+Default full attention remains at 16x16 and in the middle block.
+Explicitly choosing too few downsampling levels is rejected if the middle
+attention would exceed 32x32.
+
+```python
+TrainConfig(dataset="folder", resolution=512, model="light",
+            base_channels=32, batch_size=1)
+RestoreTrainConfig(dataset="paired", resolution=512,
+                   base_channels=32, batch_size=1)
+PredictionTrainConfig(resolution=1024, base_channels=32, batch_size=1)
+```
+
+Unconditional folder images are resized and center-cropped; restoration
+pairs are resized together. Forecast `.npy` maps must already match the
+configured resolution and are never resized. The trained resolution and
+architecture are saved in each checkpoint; a 32x32 checkpoint cannot be
+reused with a larger architecture. Large-image training still needs
+substantial GPU memory despite bounded attention resolution. Consider
+smaller batches, mixed precision, or training on spatial crops.
+
 ## Installation
 
 ```bash

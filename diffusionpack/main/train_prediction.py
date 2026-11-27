@@ -5,16 +5,17 @@ from .train import load_checkpoint, model_settings, start_training, train_batche
 
 
 def prediction_settings(config):
-    settings = model_settings(config.model)
+    settings = model_settings(config.model, resolution=config.resolution,
+                              base_channels=config.base_channels)
     del settings["in_channels"]
     settings.update(
         history_steps=config.history_steps,
         map_channels=config.map_channels,
-        resolution=config.resolution,
-        channel_mult=tuple(config.channel_mult),
     )
+    if config.channel_mult is not None:
+        settings["channel_mult"] = tuple(config.channel_mult)
     if config.resolution >= 16:
-        resolutions = [config.resolution // (2 ** level) for level in range(len(config.channel_mult))]
+        resolutions = [config.resolution // (2 ** level) for level in range(len(settings["channel_mult"]))]
         if 16 not in resolutions:
             raise ValueError("channel_mult must include a 16x16 resolution level")
     return settings

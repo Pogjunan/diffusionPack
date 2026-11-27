@@ -12,6 +12,7 @@ from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader, Dataset, Subset
 
 from ..backbone import DDPMUNet
+from ..backbone.ddpm_unet import default_channel_mult
 from ..config import ema_decay, learning_rate, random_seed, warmup_steps
 from ..diffusion import betas, ddpm_loss
 
@@ -36,14 +37,18 @@ class FolderImages(Dataset):
             return self.transform(image.convert("RGB"))
 
 
-def model_settings(preset="light", channels=3):
+def model_settings(preset="light", channels=3, resolution=32, base_channels=None):
     if preset not in ("light", "original"):
         raise ValueError("preset must be light or original")
+    if base_channels is None:
+        base_channels = 64 if preset == "light" else 128
+    if base_channels < 32 or base_channels % 32:
+        raise ValueError("base_channels must be a multiple of 32")
     return dict(
-        resolution=32,
+        resolution=resolution,
         in_channels=channels,
-        base_channels=64 if preset == "light" else 128,
-        channel_mult=(1, 2, 2, 2),
+        base_channels=base_channels,
+        channel_mult=default_channel_mult(resolution),
         num_res_blocks=1 if preset == "light" else 2,
         attention_resolutions=(16,),
         dropout=0.1,
@@ -93,12 +98,12 @@ def train_step(model, x_0, optimizer, scheduler=None, ema_model=None, *, grad_cl
     return loss.detach()
 
 
-def get_dataset(args, channels):
+def get_dataset(args, channels, resolution=32):
     from torchvision import datasets, transforms
 
     ops = []
-    if args.dataset == "folder":
-        ops.extend([transforms.Resize(32), transforms.CenterCrop(32)])
+    if args.dataset == "folder" or (args.dataset == "cifar10" and resolution != 32):
+        ops.extend([transforms.Resize(resolution), transforms.CenterCrop(resolution)])
     if args.flip:
         ops.append(transforms.RandomHorizontalFlip())
     if channels == 1:
@@ -113,7 +118,7 @@ def get_dataset(args, channels):
     elif args.dataset == "folder":
         dataset = FolderImages(args.data_root, transform)
     elif args.dataset == "fake":
-        dataset = datasets.FakeData(size=256, image_size=(3, 32, 32), transform=transform)
+        dataset = datasets.FakeData(size=256, image_size=(3, resolution, resolution), transform=transform)
     else:
         raise ValueError("Choose cifar10, folder or fake")
     if args.max_images > 0:
@@ -263,12 +268,14 @@ def train_batches(config, model, dataset, settings, dataset_name, training, chec
 def run_training(args):
     device = start_training(args)
     checkpoint = load_checkpoint(args.resume) if args.resume else None
-    settings = checkpoint["model_config"] if checkpoint else model_settings(args.model, args.channels)
+    settings = (checkpoint["model_config"] if checkpoint else
+                model_settings(args.model, args.channels, getattr(args, "resolution", 32),
+                               getattr(args, "base_channels", None)))
     if checkpoint and checkpoint["dataset"] != args.dataset:
         raise ValueError("The resume checkpoint uses a different dataset type")
     if not args.output:
         args.output = str(Path(args.resume).parent) if checkpoint else f"runs/{args.model}_{args.dataset}"
-    dataset = get_dataset(args, settings["in_channels"])
+    dataset = get_dataset(args, settings["in_channels"], settings["resolution"])
     model = DDPMUNet(**settings).to(device)
     return train_batches(args, model, dataset, settings, args.dataset, {}, checkpoint)
 
@@ -279,6 +286,8 @@ def main():
     parser.add_argument("--dataset", choices=("cifar10", "folder", "fake"), default="cifar10")
     parser.add_argument("--data-root", default="data")
     parser.add_argument("--channels", type=int, choices=(1, 3), default=3)
+    parser.add_argument("--resolution", type=int, default=32)
+    parser.add_argument("--base-channels", type=int)
     parser.add_argument("--batch-size", type=int, default=8)
     length = parser.add_mutually_exclusive_group()
     length.add_argument("--steps", type=int)

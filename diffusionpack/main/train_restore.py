@@ -8,9 +8,10 @@ def train_restore(config):
     if config.steps is None and config.epochs is None:
         raise ValueError("Set epochs or steps")
     device = start_training(config)
-    settings = model_settings(config.model)
+    settings = model_settings(config.model, resolution=config.resolution,
+                              base_channels=config.base_channels)
     del settings["in_channels"]
-    settings.update(resolution=config.resolution, condition_channels=config.condition_channels,
+    settings.update(condition_channels=config.condition_channels,
                     target_channels=config.target_channels)
     if config.dataset == "paired":
         dataset = PairedImages(config.condition_dir, config.target_dir, config.resolution,

@@ -75,12 +75,23 @@ class Upsample(nn.Module):
         return self.conv(x)
 
 
+def default_channel_mult(resolution):
+    levels = 4
+    while resolution > 16 * 2 ** (levels - 1):
+        levels += 1
+    return (1, 2, 2, 2) + (2,) * (levels - 4)
+
+
 class DDPMUNet(nn.Module):
 
     def __init__(self, resolution=32, in_channels=3, base_channels=128,
-                 channel_mult=(1, 2, 2, 2), num_res_blocks=2,
+                 channel_mult=None, num_res_blocks=2,
                  attention_resolutions=(16,), dropout=0.1):
         super().__init__()
+        if not isinstance(resolution, int) or resolution < 8:
+            raise ValueError("resolution must be an integer at least 8")
+        if channel_mult is None:
+            channel_mult = default_channel_mult(resolution)
         self.resolution = resolution
         self.in_channels = in_channels
         self.base_channels = base_channels
@@ -90,6 +101,8 @@ class DDPMUNet(nn.Module):
         factor = 2 ** (len(channel_mult) - 1)
         if resolution % factor:
             raise ValueError(f'resolution {resolution} is not divisible by {factor}')
+        if resolution // factor > 32:
+            raise ValueError("Bottleneck attention exceeds 32x32; add downsampling levels")
 
         self.time_dense0 = nn.Linear(base_channels, base_channels * 4)
         self.time_dense1 = nn.Linear(base_channels * 4, base_channels * 4)

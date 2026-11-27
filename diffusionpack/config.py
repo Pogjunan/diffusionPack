@@ -44,6 +44,8 @@ class TrainConfig(Config):
     amp = True
     flip = True
     progress = True
+    resolution = 32
+    base_channels = None
 
 
 class InferenceConfig(Config):
