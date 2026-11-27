@@ -49,9 +49,11 @@ def infer_prediction(config):
             stamp = origin.removesuffix("+00:00").replace(":", "") + "Z"
             for sample in range(1, config.samples + 1):
                 predicted = prediction_sample(model, history, progress=config.progress)
-                grid = inverse_scale(predicted[0].cpu(), training["value_min"], training["value_max"])
+                grid = inverse_scale(predicted[0].float().cpu(), source.value_min, source.value_max)
+                if not torch.isfinite(grid).all():
+                    raise ValueError(f"Non-finite forecast for {origin}, sample {sample}")
                 filename = f"forecast_{stamp}_{training['lead_minutes']}min_sample_{sample:03d}.npy"
-                np.save(staging / filename, grid.numpy().astype(np.float32, copy=False))
+                np.save(staging / filename, grid.numpy())
                 records.append((origin, valid, str(Path(run.name) / filename), training["units"]))
         staging.rename(run)
     return records

@@ -1,6 +1,9 @@
 import argparse
 from copy import deepcopy
+from math import ceil, isfinite
+from numbers import Integral
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import torch
 from tqdm.auto import tqdm
@@ -19,7 +22,8 @@ ddpm_schedule = (len(betas), betas[0].item(), betas[-1].item())
 class FolderImages(Dataset):
     def __init__(self, folder, transform):
         extensions = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
-        self.paths = sorted(p for p in Path(folder).rglob("*") if p.suffix.lower() in extensions)
+        self.paths = sorted(path for path in Path(folder).rglob("*")
+                            if path.suffix.lower() in extensions and path.is_file())
         if not self.paths:
             raise ValueError(f"No images found in {folder}")
         self.transform = transform
@@ -55,32 +59,37 @@ def init_training(model, lr=learning_rate, warmup=warmup_steps):
     return optimizer, scheduler, ema_model
 
 
-def train_step(model, x_0, optimizer, scheduler=None, ema_model=None, *, grad_clip=1.0, scaler=None):
+def train_step(model, x_0, optimizer, scheduler=None, ema_model=None, *, grad_clip=1.0,
+               scaler=None, loss_function=ddpm_loss, condition=None):
     model.train()
     optimizer.zero_grad(set_to_none=True)
-    amp = scaler is not None and scaler.is_enabled()
-    with torch.autocast(device_type=x_0.device.type, enabled=amp):
-        loss = ddpm_loss(model, x_0)
-    if amp:
-        scaler.scale(loss).backward()
-        scaler.unscale_(optimizer)
-        clip_grad_norm_(model.parameters(), grad_clip)
-        previous_scale = scaler.get_scale()
-        scaler.step(optimizer)
-        scaler.update()
-        updated = scaler.get_scale() >= previous_scale
-    else:
-        loss.backward()
-        clip_grad_norm_(model.parameters(), grad_clip, error_if_nonfinite=True)
-        optimizer.step()
-        updated = True
-    if updated:
-        if ema_model is not None:
-            with torch.no_grad():
-                for average, weight in zip(ema_model.parameters(), model.parameters(), strict=True):
-                    average.lerp_(weight, 1 - ema_decay)
-        if scheduler is not None:
-            scheduler.step()
+    if scaler is None:
+        scaler = torch.amp.GradScaler("cuda", enabled=False)
+    with torch.autocast(device_type=x_0.device.type, enabled=scaler.is_enabled()):
+        if condition is None:
+            loss = loss_function(model, x_0)
+        else:
+            loss = loss_function(model, x_0, condition)
+
+    scaler.scale(loss).backward()
+    scaler.unscale_(optimizer)
+    clip_grad_norm_(model.parameters(), grad_clip, error_if_nonfinite=not scaler.is_enabled())
+    previous_scale = scaler.get_scale()
+    scaler.step(optimizer)
+    scaler.update()
+    scale = scaler.get_scale()
+    if scale == 0:
+        raise FloatingPointError("AMP scale reached zero after non-finite gradients")
+    if scale < previous_scale:
+        return loss.detach()
+
+    if ema_model is not None:
+        # EMA ← d·EMA + (1−d)·θ
+        with torch.no_grad():
+            for average, weight in zip(ema_model.parameters(), model.parameters(), strict=True):
+                average.lerp_(weight, 1 - ema_decay)
+    if scheduler is not None:
+        scheduler.step()
     return loss.detach()
 
 
@@ -112,7 +121,8 @@ def get_dataset(args, channels):
     return dataset
 
 
-def save_checkpoint(path, step, model, ema_model, optimizer, scheduler, scaler, config, dataset, training=None):
+def save_checkpoint(path, step, model, ema_model, optimizer, scheduler, scaler, config, dataset,
+                    training=None, *, batches=None, epoch=None):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     state = {
@@ -127,9 +137,12 @@ def save_checkpoint(path, step, model, ema_model, optimizer, scheduler, scaler, 
         "scheduler": scheduler.state_dict(),
         "scaler": scaler.state_dict(),
     }
-    temporary = path.with_suffix(".tmp")
-    torch.save(state, temporary)
-    temporary.replace(path)
+    if batches is not None:
+        state.update(batches=batches, epoch=epoch)
+    with TemporaryDirectory(dir=path.parent) as folder:
+        temporary = Path(folder) / path.name
+        torch.save(state, temporary)
+        temporary.replace(path)
 
 
 def load_checkpoint(path):
@@ -150,97 +163,114 @@ def choose_device(value="auto"):
 
 
 def start_training(config):
+    if config.steps is not None and config.epochs is not None:
+        raise ValueError("Choose either epochs or steps")
+    counts = (config.steps, config.epochs, config.batch_size, config.save_every, getattr(config, "log_every", 1))
+    if any(not isinstance(n, Integral) or n < 1 for n in counts if n is not None):
+        raise ValueError("Training length, batch size and intervals must be positive integers")
+    if config.lr is not None and not (isfinite(config.lr) and config.lr > 0):
+        raise ValueError("Learning rate must be finite and positive")
+    if config.warmup_steps is not None and not (isinstance(config.warmup_steps, Integral) and config.warmup_steps >= 0):
+        raise ValueError("Warmup steps must be a nonnegative integer")
     if not config.resume:
         torch.manual_seed(random_seed)
     return choose_device(config.device)
 
 
-def run_training(args):
-    if args.steps is not None and args.epochs is not None:
-        raise ValueError("Specify either steps or epochs, not both")
-    if (args.steps is not None and args.steps < 1 or
-        args.epochs is not None and args.epochs < 1 or
-        args.batch_size < 1 or args.save_every < 1 or args.log_every < 1 or
-        args.lr is not None and args.lr <= 0 or
-        args.warmup_steps is not None and args.warmup_steps < 0):
-        raise ValueError("Invalid steps, epochs, batch size, learning rate or warmup")
+def train_batches(config, model, dataset, settings, dataset_name, training, checkpoint, loss_function=ddpm_loss):
+    task = training.get("task", "unconditional")
+    log_every = getattr(config, "log_every", 50)
+    previous = dict(checkpoint.get("training", {})) if checkpoint else {}
+    default_lr = checkpoint["scheduler"]["base_lrs"][0] if checkpoint else learning_rate
+    saved_lr = previous.get("lr", default_lr)
+    saved_warmup = previous.get("warmup", warmup_steps)
+    lr = saved_lr if config.lr is None else config.lr
+    warmup = saved_warmup if config.warmup_steps is None else config.warmup_steps
+    if checkpoint:
+        if task == "prediction":
+            previous.setdefault("history_lag_minutes", 0)
+        if (checkpoint["model_config"] != settings or checkpoint["dataset"] != dataset_name
+            or any(previous.get(key) != value for key, value in training.items())
+            or lr != saved_lr or warmup != saved_warmup):
+            raise ValueError("Resume with the same model, dataset and training settings")
+    training = dict(training, lr=lr, warmup=warmup)
 
-    args.output = args.output or (str(Path(args.resume).parent) if args.resume else f"runs/{args.model}_{args.dataset}")
-    device = start_training(args)
-    checkpoint = load_checkpoint(args.resume) if args.resume else None
-    config = checkpoint["model_config"] if checkpoint else model_settings(args.model, args.channels)
-    if checkpoint and checkpoint["dataset"] != args.dataset:
-        raise ValueError("The resume checkpoint uses a different dataset type")
-    previous_training = checkpoint.get("training", {}) if checkpoint else {}
-    previous_lr = previous_training.get(
-        "lr", checkpoint["scheduler"]["base_lrs"][0] if checkpoint else learning_rate
-    )
-    previous_warmup = previous_training.get("warmup", warmup_steps)
-    if checkpoint and args.lr is not None and args.lr != previous_lr:
-        raise ValueError("Resume must use the saved learning rate")
-    if checkpoint and args.warmup_steps is not None and args.warmup_steps != previous_warmup:
-        raise ValueError("Resume must use the saved warmup steps")
-    lr = previous_lr if checkpoint else (args.lr if args.lr is not None else learning_rate)
-    warmup = previous_warmup if checkpoint else (
-        args.warmup_steps if args.warmup_steps is not None else warmup_steps
-    )
-    training = {"lr": lr, "warmup": warmup}
-    model = DDPMUNet(**config).to(device)
-    optimizer, scheduler, ema_model = init_training(model, lr=lr, warmup=warmup)
-    use_amp = args.amp and device.type == "cuda"
-    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
-    start_step = 0
+    device = next(model.parameters()).device
+    optimizer, scheduler, ema = init_training(model, lr, warmup)
+    scaler = torch.amp.GradScaler("cuda", enabled=config.amp and device.type == "cuda")
+    loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True, num_workers=config.workers,
+                        pin_memory=device.type == "cuda")
+    batches = 0
     if checkpoint:
         model.load_state_dict(checkpoint["model"])
-        ema_model.load_state_dict(checkpoint["ema"])
+        ema.load_state_dict(checkpoint["ema"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         scheduler.load_state_dict(checkpoint["scheduler"])
-        if use_amp and checkpoint["scaler"]:
+        if scaler.is_enabled() and checkpoint.get("scaler"):
             scaler.load_state_dict(checkpoint["scaler"])
-        start_step = checkpoint["step"]
+        batches = checkpoint.get("batches", checkpoint["step"])
+    step = scheduler.last_epoch
+    epoch = checkpoint.get("epoch", previous.get("epoch")) if checkpoint else 0
+    epoch_offset = 0 if epoch is None else epoch - batches / len(loader)
+    if config.epochs is not None:
+        total = ceil((config.epochs - epoch_offset) * len(loader))
+        completed = batches
+    else:
+        total = 30000 if config.steps is None else config.steps
+        completed = step
+    if completed >= total:
+        raise ValueError("Training target has already been reached")
 
-    dataset = get_dataset(args, config["in_channels"])
-    loader = DataLoader(
-        dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.workers,
-        pin_memory=device.type == "cuda", drop_last=False,
-    )
-    steps_per_epoch = len(loader)
-    target_steps = args.steps if args.steps is not None else (
-        args.epochs * steps_per_epoch if args.epochs is not None else 30000
-    )
-    if target_steps <= start_step:
-        raise ValueError(f"Already trained {start_step} steps; target is {target_steps}")
-    iterator = iter(loader)
-    progress = tqdm(
-        range(start_step + 1, target_steps + 1), total=target_steps, initial=start_step,
-        desc="DDPM training", dynamic_ncols=True, disable=not args.progress,
-    )
-    print(f"target_steps={target_steps} steps_per_epoch={steps_per_epoch} learning_rate={lr} warmup={warmup}", flush=True)
-    print(f"device={device} channels={config['in_channels']} base={config['base_channels']} images={len(dataset)} parameters={sum(p.numel() for p in model.parameters()):,} amp={use_amp}", flush=True)
-    checkpoint_path = Path(args.output) / "latest.pt"
-    for step in progress:
-        try:
-            batch = next(iterator)
-        except StopIteration:
-            iterator = iter(loader)
-            batch = next(iterator)
-        images = batch[0] if isinstance(batch, (list, tuple)) else batch
-        images = images.to(device, non_blocking=True)
-        applied_lr = optimizer.param_groups[0]["lr"]
-        loss = train_step(model, images, optimizer, scheduler, ema_model, scaler=scaler)
-        if step == 1 or step % args.log_every == 0:
-            vram = f" vram={torch.cuda.max_memory_allocated(device) / 1024**3:.2f}GiB" if device.type == "cuda" else ""
-            status = f"step={step}/{target_steps} epoch={step / steps_per_epoch:.2f} loss={loss.item():.6f} lr={applied_lr:.8f}{vram}"
-            if args.progress:
-                progress.set_postfix_str(f"loss={loss.item():.4f} lr={applied_lr:.2e}{vram}")
-            else:
-                print(status, flush=True)
-        if step % args.save_every == 0 or step == target_steps:
-            save_checkpoint(checkpoint_path, step, model, ema_model, optimizer, scheduler, scaler, config, args.dataset, training=training)
-            if args.progress:
-                tqdm.write(f"saved={checkpoint_path}")
-            else:
-                print(f"saved={checkpoint_path}", flush=True)
+    path = Path(config.output) / "latest.pt"
+    with tqdm(total=total, initial=completed, desc=f"{task} training", disable=not config.progress) as bar:
+        while completed < total:
+            for batch in loader:
+                condition = None
+                if task == "unconditional":
+                    target = batch[0] if isinstance(batch, (list, tuple)) else batch
+                else:
+                    condition, target = batch[:2]
+                    condition = condition.to(device, non_blocking=True)
+                target = target.to(device, non_blocking=True)
+                lr_used = optimizer.param_groups[0]["lr"]
+                loss = train_step(model, target, optimizer, scheduler, ema, scaler=scaler,
+                                  loss_function=loss_function, condition=condition)
+                batches += 1
+                updated = scheduler.last_epoch > step
+                step = scheduler.last_epoch
+                count = batches if config.epochs is not None else step
+                bar.update(count - completed)
+                completed = count
+                epoch = epoch_offset + batches / len(loader)
+                if updated and (step == 1 or step % log_every == 0):
+                    message = f"step={step} epoch={epoch:.2f} loss={loss.item():.5f} lr={lr_used:.2e}"
+                    if device.type == "cuda":
+                        message += f" vram={torch.cuda.max_memory_allocated(device) / 1024**3:.2f}GiB"
+                    if config.progress:
+                        bar.set_postfix_str(message)
+                    else:
+                        print(message, flush=True)
+                if completed == total or (updated and step % config.save_every == 0):
+                    if task == "prediction":
+                        training["epoch"] = epoch
+                    save_checkpoint(path, step, model, ema, optimizer, scheduler, scaler,
+                                    settings, dataset_name, training, batches=batches, epoch=epoch)
+                if completed == total:
+                    break
+    return path
+
+
+def run_training(args):
+    device = start_training(args)
+    checkpoint = load_checkpoint(args.resume) if args.resume else None
+    settings = checkpoint["model_config"] if checkpoint else model_settings(args.model, args.channels)
+    if checkpoint and checkpoint["dataset"] != args.dataset:
+        raise ValueError("The resume checkpoint uses a different dataset type")
+    if not args.output:
+        args.output = str(Path(args.resume).parent) if checkpoint else f"runs/{args.model}_{args.dataset}"
+    dataset = get_dataset(args, settings["in_channels"])
+    model = DDPMUNet(**settings).to(device)
+    return train_batches(args, model, dataset, settings, args.dataset, {}, checkpoint)
 
 
 def main():

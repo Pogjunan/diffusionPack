@@ -8,11 +8,8 @@ from torch.nn import functional as F
 
 def init_module(module: nn.Module, scale: float = 1.0) -> nn.Module:
     out_ch, in_ch, *kernel = module.weight.shape
-    kernel_size = math.prod(kernel)
-    input_connections = in_ch * kernel_size
-    output_connections = out_ch * kernel_size
-    # Average connections for weight initialization
-    avg_connections = (input_connections + output_connections) / 2
+    # fan_avg = (fan_in + fan_out)/2
+    avg_connections = (in_ch + out_ch) * math.prod(kernel) / 2
     if scale == 0:
         scale = 1e-10
     bound = math.sqrt(3 * scale / avg_connections)
@@ -39,9 +36,9 @@ def timestep_embedding(timesteps: torch.Tensor, dim: int) -> torch.Tensor:
     half = dim // 2
     if half < 2:
         raise ValueError('Embedding dim must be at least 4')
-    freq = torch.exp(torch.arange(half, device=timesteps.device, dtype=torch.float32)
-                     * (-math.log(10000.0) / (half - 1)))
-    phases = timesteps.float()[:, None] * freq[None, :]
+    indices = torch.arange(half, device=timesteps.device, dtype=torch.float32)
+    frequencies = torch.exp(indices * (-math.log(10000.0) / (half - 1)))
+    phases = timesteps.float()[:, None] * frequencies
     out = torch.cat([phases.sin(), phases.cos()], dim=1)
     if dim % 2:
         out = F.pad(out, (0, 1))
@@ -63,15 +60,11 @@ class ResBlock(nn.Module):
         h = self.conv1(F.silu(self.norm1(x)))
         h = h + self.emb_proj(F.silu(temb))[:, :, None, None]
         h = self.conv2(self.dropout(F.silu(self.norm2(h))))
-        if isinstance(self.shortcut, nn.Identity):
-            shortcut = self.shortcut(x)
-        else:
-            shortcut = self.shortcut(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+        shortcut = self.shortcut(x.movedim(1, -1)).movedim(-1, 1)
         return shortcut + h
 
 
 class AttnBlock(nn.Module):
-
     def __init__(self, channels: int):
         super().__init__()
         self.norm = norm(channels)
@@ -81,14 +74,14 @@ class AttnBlock(nn.Module):
         self.proj_out = conv(channels, channels, kernel=1, scale=0.0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        batch, channels, height, width = x.shape
         h = self.norm(x)
-        n = height * width
-        q = self.q(h).reshape(batch, channels, n).transpose(1, 2)
-        k = self.k(h).reshape(batch, channels, n)
-        v = self.v(h).reshape(batch, channels, n).transpose(1, 2)
+        channels = x.shape[1]
+        q = self.q(h).flatten(2).transpose(1, 2)
+        k = self.k(h).flatten(2)
+        v = self.v(h).flatten(2).transpose(1, 2)
+        # softmax(QKᵀ/√C)V
         weights = torch.softmax(torch.bmm(q, k) * (channels ** -0.5), dim=-1)
-        out = torch.bmm(weights, v).transpose(1, 2).reshape(batch, channels, height, width)
+        out = torch.bmm(weights, v).transpose(1, 2).reshape_as(x)
         return x + self.proj_out(out)
 
 
@@ -176,7 +169,7 @@ class DDPMUNet(nn.Module):
         if t.shape != (x.shape[0],) or t.dtype not in (torch.int32, torch.int64):
             raise ValueError('t must be a length-B integer tensor')
         t = t.to(device=x.device)
-        temb = timestep_embedding(t, self.base_channels)
+        temb = timestep_embedding(t, self.base_channels).to(self.time_dense0.weight.dtype)
         temb = self.time_dense1(F.silu(self.time_dense0(temb)))
         h = self.conv_in(x)
         hs = [h]
@@ -187,7 +180,9 @@ class DDPMUNet(nn.Module):
                 h = stage['res'](h, temb)
                 h = stage['attn'](h)
             hs.append(h)
-        h = self.mid2(self.mid_attn(self.mid1(h, temb)), temb)
+        h = self.mid1(h, temb)
+        h = self.mid_attn(h)
+        h = self.mid2(h, temb)
         for stage in self.up:
             if 'upsample' in stage:
                 h = stage['upsample'](h)

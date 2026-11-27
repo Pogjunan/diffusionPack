@@ -1,29 +1,22 @@
 from diffusionpack.config import InferenceConfig, TrainConfig
+from diffusionpack.prediction_config import PredictionInferenceConfig, PredictionTrainConfig
 from diffusionpack.restore_config import RestoreInferenceConfig, RestoreTrainConfig
 
 
 task = "restore"
 action = "train"
 
-restore_train = RestoreTrainConfig(
-    dataset="cifar10_jpeg",
-    condition_dir="data/train/condition",
-    target_dir="data/train/target",
-    model="light",
-    resolution=32,
-    batch_size=8,
-    epochs=30,
-    output="runs/restore",
-)
-
-restore_inference = RestoreInferenceConfig(
-    checkpoint="runs/restore/latest.pt",
-    condition_path=None,
-    output="runs/restore/images",
-)
+restore_train = RestoreTrainConfig()
+restore_inference = RestoreInferenceConfig()
 
 
 def main():
+    if task == "prediction" and action == "train":
+        from diffusionpack.main.train_prediction import train_prediction
+        return train_prediction(PredictionTrainConfig())
+    if task == "prediction" and action == "inference":
+        from diffusionpack.main.inference_prediction import infer_prediction
+        return infer_prediction(PredictionInferenceConfig())
     if task == "restore" and action == "train":
         from diffusionpack.main.train_restore import train_restore
         return train_restore(restore_train)
@@ -36,7 +29,7 @@ def main():
     if task == "unconditional" and action == "inference":
         from diffusionpack.main.inference import run_inference
         return run_inference(InferenceConfig())
-    raise ValueError("Choose restore or unconditional, and train or inference")
+    raise ValueError("Choose unconditional, restore or prediction, and train or inference")
 
 
 if __name__ == "__main__":

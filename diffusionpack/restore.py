@@ -1,13 +1,13 @@
 from functools import partial
 
 import torch
-from tqdm.auto import tqdm
 
-from .config import num_diff_steps
-from .diffusion import ddpm_loss, p_sample
+from .diffusion import ddpm_loss
+from .main.sampling import p_sample_loop
 
 
 def restore_loss(model, target, condition):
+    # L = mean((εθ(y_t,t,c) − ε)²)
     denoiser = partial(model, condition=condition)
     return ddpm_loss(denoiser, target)
 
@@ -18,8 +18,4 @@ def restore_sample(model, condition, *, clip_denoised=False, progress=False):
     shape = (condition.shape[0], model.target_channels, height, width)
     denoiser = partial(model, condition=condition)
     x_t = torch.randn(shape, device=condition.device, dtype=condition.dtype)
-    for step in tqdm(reversed(range(num_diff_steps)), total=num_diff_steps,
-                     desc="DDPM sampling", dynamic_ncols=True, disable=not progress):
-        t = torch.full((shape[0],), step, device=x_t.device, dtype=torch.long)
-        x_t = p_sample(denoiser, x_t, t, clip_denoised=clip_denoised)
-    return x_t
+    return p_sample_loop(denoiser, x_t, clip_denoised=clip_denoised, progress=progress)

@@ -15,10 +15,8 @@ def parse_time(value):
     return parsed.astimezone(timezone.utc)
 
 
-def read_manifest(path):
+def read_manifest(path, *, check_files=True):
     path = Path(path).resolve()
-    if not path.is_file():
-        raise FileNotFoundError(path)
     records = {}
     with path.open(newline="", encoding="utf-8-sig") as stream:
         rows = csv.DictReader(stream)
@@ -27,12 +25,11 @@ def read_manifest(path):
         for row in rows:
             valid = parse_time(row["timestamp"])
             available = parse_time(row["available_at"])
-            relative = Path(row["path"])
-            source = relative if relative.is_absolute() else path.parent / relative
+            source = path.parent / row["path"]
             if valid in records:
                 raise ValueError(f"Duplicate valid timestamp: {valid.isoformat()}")
-            if not source.is_file() or source.suffix.lower() != ".npy":
-                raise ValueError(f"Missing .npy grid: {source}")
+            if source.suffix.lower() != ".npy" or (check_files and not source.is_file()):
+                raise ValueError(f"Expected a .npy grid: {source}")
             if available < valid:
                 raise ValueError(f"Availability predates observation: {valid.isoformat()}")
             records[valid] = (source, available)
@@ -57,7 +54,7 @@ class ForecastDataset(Dataset):
             raise ValueError("history_lag_minutes must be a nonnegative integer")
         if value_min is None or value_max is None or not np.isfinite([value_min, value_max]).all() or value_max <= value_min:
             raise ValueError("Set finite physical value_min and value_max with max > min")
-        self.records = read_manifest(manifest)
+        self.records = read_manifest(manifest, check_files=require_target)
         self.history_steps = history_steps
         self.map_channels = map_channels
         self.resolution = resolution
@@ -70,10 +67,13 @@ class ForecastDataset(Dataset):
         self.rejections = {"missing_history": 0, "late_history": 0, "missing_target": 0}
         lag = timedelta(minutes=history_lag_minutes)
         history_ends = sorted(self.records) if origin_time is None else [parse_time(origin_time) - lag]
+        history_times = self.records.keys()
+        if not require_target and origin_time is None:
+            history_times = {time for time, (path, _) in self.records.items() if path.is_file()}
         for history_end in history_ends:
             origin = history_end + lag
             history = tuple(history_end - self.cadence * k for k in reversed(range(history_steps)))
-            if any(moment not in self.records for moment in history):
+            if any(moment not in history_times for moment in history):
                 self.rejections["missing_history"] += 1
                 continue
             if any(self.records[moment][1] > origin for moment in history):
@@ -92,19 +92,20 @@ class ForecastDataset(Dataset):
 
     def load_grid(self, moment):
         path = self.records[moment][0]
-        with path.open("rb") as stream:
-            values = np.load(stream, allow_pickle=False)
+        values = np.load(path, allow_pickle=False)
         if values.ndim == 2:
             values = values[None]
         shape = (self.map_channels, self.resolution, self.resolution)
         if values.shape != shape:
             raise ValueError(f"Expected {shape}, received {values.shape} at {path}")
-        if not np.issubdtype(values.dtype, np.number):
-            raise ValueError(f"Non-numeric data at {path}")
-        if not np.isfinite(values).all():
-            raise ValueError(f"Non-finite grid values at {path}")
-        values = np.asarray(values, dtype=np.float32)
-        return (torch.from_numpy(values) - self.value_min) * (2 / (self.value_max - self.value_min)) - 1
+        if not (np.issubdtype(values.dtype, np.integer) or np.issubdtype(values.dtype, np.floating)):
+            raise ValueError(f"Expected a real-valued grid at {path}")
+        values = values.astype(np.float64, copy=False)
+        scaled = 2 * ((values - self.value_min) / (self.value_max - self.value_min)) - 1
+        scaled = scaled.astype(np.float32)
+        if not np.isfinite(scaled).all():
+            raise ValueError(f"Non-finite scaled grid at {path}")
+        return torch.from_numpy(scaled)
 
     def __getitem__(self, index):
         origin, history, target = self.windows[index]

@@ -3,11 +3,9 @@ from pathlib import Path
 
 import torch
 from torchvision.utils import save_image
-from tqdm.auto import tqdm
 
 from ..backbone import DDPMUNet
-from ..config import num_diff_steps
-from ..diffusion import p_sample
+from .sampling import p_sample_loop
 from .train import choose_device, load_checkpoint
 
 
@@ -17,6 +15,8 @@ def run_inference(args):
 
     device = choose_device(args.device)
     checkpoint = load_checkpoint(args.checkpoint)
+    if checkpoint.get("training", {}).get("task") in ("restore", "prediction"):
+        raise ValueError("Choose an unconditional checkpoint")
     config = checkpoint["model_config"]
     model = DDPMUNet(**config).to(device)
     model.load_state_dict(checkpoint[args.weights])
@@ -26,11 +26,8 @@ def run_inference(args):
         count = min(args.batch_size, args.samples - start)
         shape = (count, config["in_channels"], config["resolution"], config["resolution"])
         x_t = torch.randn(shape, device=device)
-        for step in tqdm(reversed(range(num_diff_steps)), total=num_diff_steps,
-                         desc="DDPM sampling", dynamic_ncols=True, disable=not args.progress):
-            t = torch.full((count,), step, device=device, dtype=torch.long)
-            x_t = p_sample(model, x_t, t, clip_denoised=True)
-        generated.append(x_t.clamp(-1, 1).add(1).div(2).cpu())
+        image = p_sample_loop(model, x_t, clip_denoised=True, progress=args.progress)
+        generated.append(image.add(1).div(2).cpu())
         print(f"generated={start + count}/{args.samples}", flush=True)
     images = torch.cat(generated)
     path = Path(args.output)
