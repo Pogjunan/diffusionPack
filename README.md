@@ -2,7 +2,7 @@
 
 ## Abstract
 
-diffusionPack is a PyTorch package for developing and studying diffusion-based generative models. It starts with Denoising Diffusion Probabilistic Models (DDPM) and aims to provide reusable implementations for unconditional and conditional generation, reducing the need to rebuild baselines for each research project. The next implementation is DDIM. Later work will cover [Drifting Models](https://arxiv.org/abs/2602.04770) and SCRD.
+diffusionPack is a PyTorch package for developing and studying diffusion-based generative models. It starts with Denoising Diffusion Probabilistic Models (DDPM) and aims to provide reusable implementations for unconditional and conditional generation, reducing the need to rebuild baselines for each research project. The next implementation is DDIM. Later work will cover [Drifting Models](https://arxiv.org/abs/2602.04770).
 
 ## Implementation Principles
 
