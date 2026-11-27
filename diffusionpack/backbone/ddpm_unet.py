@@ -5,9 +5,8 @@ from torch.nn import functional as F
 
 
 def timestep_embedding(timesteps, dim):
-    half = dim // 2  # sin과 cos가 각각 dim의 절반을 채움 (dim=64 → 32+32)
-    i = torch.arange(half, device=timesteps.device, dtype=torch.float32)
-    freq = torch.exp(i * (-math.log(10000.0) / max(half - 1, 1)))
+    i = torch.arange(dim // 2, device=timesteps.device, dtype=torch.float32)
+    freq = torch.exp(i * (-math.log(10000.0) / max(dim // 2 - 1, 1)))
     angle = timesteps.float()[:, None] * freq[None, :]
     emb = torch.cat([angle.sin(), angle.cos()], dim=1)
     return F.pad(emb, (0, dim % 2))
@@ -16,23 +15,22 @@ def timestep_embedding(timesteps, dim):
 class ResBlock(nn.Module):
     def __init__(self, in_ch, out_ch, temb_ch, dropout):
         super().__init__()
-        # GroupNorm: 채널을 32개 그룹으로 나눠 샘플별 평균·분산으로 정규화
+        # 32 channel groups
         self.norm1 = nn.GroupNorm(32, in_ch, eps=1e-6)
         self.conv1 = nn.Conv2d(in_ch, out_ch, 3, padding=1)
         self.emb_proj = nn.Linear(temb_ch, out_ch)
         self.norm2 = nn.GroupNorm(32, out_ch, eps=1e-6)
         self.dropout = nn.Dropout(dropout)
         self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1)
-        # ResNet shortcut: 채널 수가 다를 때만 입력을 선형 변환
+        # Channel projection
         self.shortcut = nn.Linear(in_ch, out_ch) if in_ch != out_ch else nn.Identity()
 
     def forward(self, x, temb):
         h = self.conv1(F.silu(self.norm1(x)))
         h = h + self.emb_proj(F.silu(temb))[:, :, None, None]
-        h = self.conv2(self.dropout(F.silu(self.norm2(h))))
-        # Linear는 채널을 마지막 차원에서 바꾸므로 [B,C,H,W] ↔ [B,H,W,C]
-        skip = self.shortcut(x.movedim(1, -1)).movedim(-1, 1)
-        return skip + h
+        residual = self.conv2(self.dropout(F.silu(self.norm2(h))))
+        x = self.shortcut(x.movedim(1, -1)).movedim(-1, 1)
+        return x + residual  # S(x) + R(x, t)
 
 
 class AttnBlock(nn.Module):
@@ -50,7 +48,7 @@ class AttnBlock(nn.Module):
         q = self.q(h).flatten(2).transpose(1, 2)
         k = self.k(h).flatten(2)
         v = self.v(h).flatten(2).transpose(1, 2)
-        # softmax(QKᵀ/√C)V
+        # softmax(QK^T / sqrt(C)) V
         weights = torch.softmax(torch.bmm(q, k) * (channels ** -0.5), dim=-1)
         out = torch.bmm(weights, v).transpose(1, 2).reshape_as(x)
         return x + self.proj_out(out)
@@ -133,19 +131,6 @@ class DDPMUNet(nn.Module):
                 current_res *= 2
         self.norm_out = nn.GroupNorm(32, ch, eps=1e-6)
         self.conv_out = nn.Conv2d(ch, in_channels, 3, padding=1)
-
-        # 원본 DDPM의 fan_avg uniform 초기화 (Xavier), bias=0
-        for layer in self.modules():
-            if isinstance(layer, (nn.Conv2d, nn.Linear)):
-                nn.init.xavier_uniform_(layer.weight)
-                nn.init.zeros_(layer.bias)
-        # Residual/Attention 및 최종 출력은 거의 0에서 시작하도록 함
-        for layer in self.modules():
-            if isinstance(layer, ResBlock):
-                nn.init.xavier_uniform_(layer.conv2.weight, gain=1e-5)
-            elif isinstance(layer, AttnBlock):
-                nn.init.xavier_uniform_(layer.proj_out.weight, gain=1e-5)
-        nn.init.xavier_uniform_(self.conv_out.weight, gain=1e-5)
 
     def forward(self, x, t):
         if x.shape[1:] != (self.in_channels, self.resolution, self.resolution):

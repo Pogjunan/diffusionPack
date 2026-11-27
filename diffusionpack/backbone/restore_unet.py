@@ -12,8 +12,6 @@ class RestoreUNet(DDPMUNet):
         self.target_channels = target_channels
         self.condition_channels = condition_channels
         self.conv_out = nn.Conv2d(self.conv_out.in_channels, target_channels, 3, padding=1)
-        nn.init.xavier_uniform_(self.conv_out.weight, gain=1e-5)
-        nn.init.zeros_(self.conv_out.bias)
 
     def forward(self, noisy_target, t, condition):
         if noisy_target.shape[1] != self.target_channels or condition.shape[1] != self.condition_channels:
