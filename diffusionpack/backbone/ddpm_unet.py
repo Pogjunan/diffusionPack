@@ -7,8 +7,16 @@ from torch.nn import functional as F
 
 
 def init_module(module: nn.Module, scale: float = 1.0) -> nn.Module:
-    gain = math.sqrt(1e-10 if scale == 0.0 else scale)
-    nn.init.xavier_uniform_(module.weight, gain=gain)
+    out_ch, in_ch, *kernel = module.weight.shape
+    kernel_size = math.prod(kernel)
+    fan_in = in_ch * kernel_size
+    fan_out = out_ch * kernel_size
+    # Average input and output connections
+    fan_avg = (fan_in + fan_out) / 2
+    if scale == 0:
+        scale = 1e-10
+    bound = math.sqrt(3 * scale / fan_avg)
+    nn.init.uniform_(module.weight, -bound, bound)
     if module.bias is not None:
         nn.init.zeros_(module.bias)
     return module
@@ -24,8 +32,6 @@ def linear(in_ch: int, out_ch: int, scale: float = 1.0):
 
 
 def norm(channels: int) -> nn.GroupNorm:
-    if channels % 32:
-        raise ValueError(f"Original DDPM uses 32 groups; got {channels} channels")
     return nn.GroupNorm(32, channels, eps=1e-6)
 
 
@@ -118,12 +124,6 @@ class DDPMUNet(nn.Module):
         factor = 2 ** (len(channel_mult) - 1)
         if resolution % factor:
             raise ValueError(f'resolution {resolution} is not divisible by {factor}')
-        if base_channels % 32:
-            raise ValueError('base_channels must be divisible by 32')
-        if any((base_channels * k) % 32 for k in channel_mult):
-            raise ValueError('All channel dimensions must be divisible by 32')
-        if not (0 <= dropout < 1):
-            raise ValueError('dropout outside [0,1)')
 
         self.time_dense0 = linear(base_channels, base_channels * 4)
         self.time_dense1 = linear(base_channels * 4, base_channels * 4)
@@ -163,17 +163,13 @@ class DDPMUNet(nn.Module):
             if level != 0:
                 self.up.append(nn.ModuleDict({'upsample': Upsample(ch)}))
                 current_res *= 2
-        assert not skip_channels, 'Skip connection topology mismatch'
-        assert current_res == resolution
         self.norm_out = norm(ch)
         self.conv_out = conv(ch, in_channels, scale=0.0)
 
     def forward(self, x: torch.Tensor, t: torch.Tensor):
-        if x.ndim != 4 or x.shape[1] != self.in_channels:
-            raise ValueError(f'Expected NCHW with {self.in_channels} channels, got {tuple(x.shape)}')
-        if x.shape[-2:] != (self.resolution, self.resolution):
-            raise ValueError(f'Expected square {self.resolution}x{self.resolution}')
-        if t.ndim != 1 or t.shape[0] != x.shape[0] or t.dtype not in (torch.int32, torch.int64):
+        if x.shape[1:] != (self.in_channels, self.resolution, self.resolution):
+            raise ValueError('Image channels and resolution must match the U-Net configuration')
+        if t.shape != (x.shape[0],) or t.dtype not in (torch.int32, torch.int64):
             raise ValueError('t must be a length-B integer tensor')
         temb = timestep_embedding(t, self.base_channels)
         temb = self.time_dense1(F.silu(self.time_dense0(temb)))
@@ -193,5 +189,4 @@ class DDPMUNet(nn.Module):
             else:
                 h = stage['res'](torch.cat((h, hs.pop()), dim=1), temb)
                 h = stage['attn'](h)
-        assert not hs
         return self.conv_out(F.silu(self.norm_out(h)))

@@ -24,4 +24,18 @@ pip install --upgrade --force-reinstall git+https://github.com/Pogjunan/diffusio
 
 ## Current Status
 
-DDPM equations, the U-Net, reverse sampling, and a single-batch training step are included as preliminary PyTorch implementations. Full training and generation quality have not been verified.
+The DDPM training step supports the original CIFAR-10 learning rate warmup and exponential moving average (EMA). Full training and generation quality have not been verified.
+
+## Training
+
+Start with a DDPM U-Net on the same device as your image batches. Initialize the optimizer, scheduler, and EMA model once per run.
+
+```python
+from diffusionpack.main.train import init_training, train_step
+
+optimizer, scheduler, ema_model = init_training(model)
+for images in image_batches:
+    loss = train_step(model, images, optimizer, scheduler, ema_model)
+```
+
+Use `ema_model` with `p_sample_loop` for sampling.
