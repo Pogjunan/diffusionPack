@@ -8,28 +8,17 @@ Diffusion models are widely used in generative modeling and have applications in
 
 I implement the models myself when possible, using research papers and public reference code as guides. I use generative AI mainly to check whether the code matches the mathematics and to find errors. It may also help me write functions beyond my current experience. I review AI-assisted code against the papers and available implementations whenever possible. My goal is to understand the code and build a reliable foundation for future research.
 
-## Installation
-
-Install from GitHub:
+## Use from Source
 
 ```bash
-python -m pip install git+https://github.com/Pogjunan/diffusionPack.git
-```
-
-To update the installed package to the latest GitHub version:
-
-```bash
-python -m pip install --upgrade --force-reinstall git+https://github.com/Pogjunan/diffusionPack.git
-```
-
-Check the installation:
-
-```bash
+git clone https://github.com/Pogjunan/diffusionPack.git
+cd diffusionPack
+python -m pip install torch numpy
 python -c "import diffusionpack; print(diffusionpack.__version__)"
 ```
 
 ## Current Status
 
-The initial DDPM equations and a draft PyTorch U-Net are available for review. Full training and reverse sampling are not yet integrated. Exact numerical equivalence with TensorFlow and generation quality have not been established.
+DDPM equations, the U-Net, reverse sampling, and a single-batch training step are included as preliminary PyTorch implementations. Full training and generation quality have not been verified.
 
-Run the local checks from a cloned repository: python -m unittest discover -s test -v.
+This source-only repository does not currently support installation through `pip install git+...`.

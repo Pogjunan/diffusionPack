@@ -1,9 +1,3 @@
-"""DDPM equations (2), (4), (7), (11), (14), (15).
-
-A draft using the original fixedlarge CIFAR-10 variance.
-Training and reverse sampling loops have not yet been integrated.
-"""
-
 import torch
 from .config import num_diff_steps, beta_start, beta_end
 
@@ -24,54 +18,82 @@ reverse_var = betas
 reverse_log_var = torch.log(torch.cat([posterior_var[1:2], betas[1:]]))
 
 
+def step_value(schedule, t, x):
+    shape = (t.shape[0],) + (1,) * (x.ndim - 1)
+    return schedule.to(device=x.device, dtype=x.dtype)[t].reshape(shape)
+
+
 def q_sample(x_0, t, eps):
-    """Equation (4), with code t=0 as the first diffusion step."""
     if x_0.shape != eps.shape:
         raise ValueError("x_0 and eps must have identical shapes")
     if t.ndim != 1 or t.shape[0] != x_0.shape[0] or t.dtype != torch.long:
         raise ValueError("t must be a long tensor with shape (batch_size,)")
     if torch.any(t < 0) or torch.any(t >= num_diff_steps):
         raise ValueError("t is outside the diffusion schedule")
-    alpha_bar = alpha_bars.to(device=x_0.device, dtype=x_0.dtype)[t].reshape(
-        -1, *([1] * (x_0.ndim - 1))
+    return (
+        step_value(sqrt_alpha_bars, t, x_0) * x_0
+        + step_value(sqrt_one_minus_alpha_bars, t, x_0) * eps
     )
-    return torch.sqrt(alpha_bar) * x_0 + torch.sqrt(1 - alpha_bar) * eps
 
 
 def posterior_mean(x_0, x_t, t):
-    """Equation (7), without precomputed posterior mean coefficients."""
     if x_0.shape != x_t.shape:
         raise ValueError("x_0 and x_t must have identical shapes")
-    shape = (-1, *([1] * (x_0.ndim - 1)))
-    a = alphas.to(device=x_t.device, dtype=x_t.dtype)[t].reshape(shape)
-    b = betas.to(device=x_t.device, dtype=x_t.dtype)[t].reshape(shape)
-    ab = alpha_bars.to(device=x_t.device, dtype=x_t.dtype)[t].reshape(shape)
-    ab_prev = alpha_bars_prev.to(device=x_t.device, dtype=x_t.dtype)[t].reshape(shape)
-    return (torch.sqrt(ab_prev) * b * x_0 + torch.sqrt(a) * (1 - ab_prev) * x_t) / (1 - ab)
+    denom = 1 - alpha_bars
+    return (
+        step_value(alpha_bars_prev.sqrt() * betas / denom, t, x_t) * x_0
+        + step_value(alphas.sqrt() * (1 - alpha_bars_prev) / denom, t, x_t) * x_t
+    )
 
 
 def predict_x0(x_t, t, eps_pred):
-    """Equation (15), without clipping."""
     if x_t.shape != eps_pred.shape:
         raise ValueError("x_t and eps_pred must have identical shapes")
-    shape = (-1, *([1] * (x_t.ndim - 1)))
-    ab = alpha_bars.to(device=x_t.device, dtype=x_t.dtype)[t].reshape(shape)
-    return (x_t - torch.sqrt(1 - ab) * eps_pred) / torch.sqrt(ab)
+    return (
+        step_value(sqrt_recip_alpha_bars, t, x_t) * x_t
+        - step_value(sqrt_recipm1_alpha_bars, t, x_t) * eps_pred
+    )
 
 
 def reverse_mean(x_t, t, eps_pred):
-    """Equation (11), without clipping."""
     if x_t.shape != eps_pred.shape:
         raise ValueError("x_t and eps_pred must have identical shapes")
-    shape = (-1, *([1] * (x_t.ndim - 1)))
-    a = alphas.to(device=x_t.device, dtype=x_t.dtype)[t].reshape(shape)
-    b = betas.to(device=x_t.device, dtype=x_t.dtype)[t].reshape(shape)
-    ab = alpha_bars.to(device=x_t.device, dtype=x_t.dtype)[t].reshape(shape)
-    return (x_t - b / torch.sqrt(1 - ab) * eps_pred) / torch.sqrt(a)
+    eps_scale = step_value(betas / sqrt_one_minus_alpha_bars, t, x_t)
+    return (x_t - eps_scale * eps_pred) / step_value(alphas.sqrt(), t, x_t)
+
+
+@torch.no_grad()
+def p_sample(model, x_t, t, noise=None, *, clip_denoised=True):
+    if x_t.ndim < 1 or not x_t.is_floating_point():
+        raise ValueError("x_t must be a batch of floating-point values")
+    if t.shape != (x_t.shape[0],) or t.dtype != torch.long or t.device != x_t.device:
+        raise ValueError("t must be a long index per image on the same device as x_t")
+    if torch.any(t < 0) or torch.any(t >= num_diff_steps):
+        raise ValueError("t is outside the diffusion schedule")
+    eps_pred = model(x_t, t)
+    x_0 = predict_x0(x_t, t, eps_pred)
+    if clip_denoised:
+        x_0 = x_0.clamp(-1, 1)
+    mean = posterior_mean(x_0, x_t, t)
+    std = step_value(reverse_log_var, t, x_t).mul(0.5).exp()
+    if noise is None:
+        noise = torch.randn_like(x_t)
+    elif noise.shape != x_t.shape or noise.device != x_t.device or noise.dtype != x_t.dtype:
+        raise ValueError("noise must match the shape, device and dtype of x_t")
+    add_noise = (t > 0).reshape((t.shape[0],) + (1,) * (x_t.ndim - 1))
+    return mean + add_noise * std * noise
+
+
+@torch.no_grad()
+def p_sample_loop(model, shape, *, device, dtype=torch.float32, clip_denoised=True):
+    x_t = torch.randn(shape, device=device, dtype=dtype)
+    for step in reversed(range(num_diff_steps)):
+        t = torch.full((x_t.shape[0],), step, device=x_t.device, dtype=torch.long)
+        x_t = p_sample(model, x_t, t, clip_denoised=clip_denoised)
+    return x_t
 
 
 def ddpm_loss(model, x_0):
-    """Equation (14) and Algorithm 1, unweighted epsilon MSE."""
     t = torch.randint(0, num_diff_steps, (x_0.shape[0],), device=x_0.device)
     eps = torch.randn_like(x_0)
     x_t = q_sample(x_0, t, eps)

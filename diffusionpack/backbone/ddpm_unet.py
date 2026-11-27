@@ -1,13 +1,3 @@
-"""PyTorch reference port of Ho et al. (2020) DDPM U-Net.
-
-Upstream: https://github.com/hojonathanho/diffusion
-Commit: 1e0dceb3b3495bbe19116a5e1b3596cd0706c543
-Primary reference: diffusion_tf/models/unet.py and diffusion_tf/nn.py
-
-Matches the architecture and intended elementary operations for original
-CIFAR-10 settings. Does not load original TensorFlow trained weights or
-claim bitwise framework parity or reproduced DDPM paper metrics.
-"""
 from __future__ import annotations
 
 import math
@@ -17,10 +7,6 @@ from torch.nn import functional as F
 
 
 def init_module(module: nn.Module, scale: float = 1.0) -> nn.Module:
-    """TF nn.default_init: variance_scaling(scale, fan_avg, uniform).
-
-    TF maps scale=0.0 to 1e-10 rather than a hard zero: xavier gain=1e-5.
-    """
     gain = math.sqrt(1e-10 if scale == 0.0 else scale)
     nn.init.xavier_uniform_(module.weight, gain=gain)
     if module.bias is not None:
@@ -38,14 +24,12 @@ def linear(in_ch: int, out_ch: int, scale: float = 1.0):
 
 
 def norm(channels: int) -> nn.GroupNorm:
-    # TensorFlow 1.15 tf.contrib.layers.group_norm defaults: 32 groups, eps=1e-6.
     if channels % 32:
         raise ValueError(f"Original DDPM uses 32 groups; got {channels} channels")
     return nn.GroupNorm(32, channels, eps=1e-6)
 
 
 def timestep_embedding(timesteps: torch.Tensor, dim: int) -> torch.Tensor:
-    """Matches TF original nn.get_timestep_embedding sine-then-cosine ordering."""
     half = dim // 2
     if half < 2:
         raise ValueError('Embedding dim must be at least 4')
@@ -77,7 +61,7 @@ class ResBlock(nn.Module):
 
 
 class AttnBlock(nn.Module):
-    """Single-head spatial self-attention as in the TF original."""
+
     def __init__(self, channels: int):
         super().__init__()
         self.norm = norm(channels)
@@ -104,8 +88,6 @@ class Downsample(nn.Module):
         self.down = conv(channels, channels, kernel=3, stride=2)
 
     def forward(self, x):
-        # TensorFlow SAME padding for k=3, stride=2 and even H,W:
-        # top=0, bottom=1, left=0, right=1 (not PyTorch symmetric padding=1).
         if x.shape[-2] % 2 or x.shape[-1] % 2:
             raise ValueError("This original DDPM port expects even spatial sizes at each downsample")
         return self.down(F.pad(x, (0, 1, 0, 1)))
@@ -117,18 +99,12 @@ class Upsample(nn.Module):
         self.conv = conv(channels, channels)
 
     def forward(self, x):
-        # At exactly 2x scaling, TF1 nearest with align_corners=True
-        # and torch nearest select the same integer input locations.
         x = F.interpolate(x, scale_factor=2, mode='nearest')
         return self.conv(x)
 
 
 class DDPMUNet(nn.Module):
-    """Original CIFAR-10 DDPM U-Net topology and default hyperparameters.
 
-    For 512x512, modifying resolution/levels is an adaptation, not the
-    unchanged original CIFAR-10 architecture.
-    """
     def __init__(self, resolution=32, in_channels=3, base_channels=128,
                  channel_mult=(1, 2, 2, 2), num_res_blocks=2,
                  attention_resolutions=(16,), dropout=0.1):
