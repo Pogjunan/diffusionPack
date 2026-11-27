@@ -10,27 +10,27 @@ def prepare(args):
     files = sorted(Path(args.data_dir).resolve().rglob("*.npy"))
     if not files:
         raise ValueError("No .npy files found")
-    rows = [dict(name=path.stem, path=str(path), split="frames") for path in files]
+    frames = pd.DataFrame(dict(name=path.stem, path=str(path)) for path in files)
+    local_times = pd.to_datetime(frames["name"], format=args.filename_format)
+    frames["timestamp"] = pd.to_datetime(local_times.dt.strftime("%Y-%m-%dT%H:%M:%S") + args.time_offset, utc=True)
+    if frames["timestamp"].duplicated().any():
+        raise ValueError("Multiple .npy files have the same observation time")
+    frames["available_at"] = frames["timestamp"] + pd.to_timedelta(args.available_delay_minutes, unit="min")
+    targets = {}
     for split in ("train", "valid", "test"):
         names = pd.read_csv(getattr(args, f"{split}_txt"), header=None, names=["name"],
                             dtype=str, comment="#")["name"].str.strip()
         if names.isna().any():
             raise ValueError(f"Missing filename in {split} list")
-        rows.extend(dict(name=Path(name).stem, path="", split=split) for name in names)
-    df = pd.DataFrame(rows)
-    local_times = pd.to_datetime(df["name"], format=args.filename_format)
-    df["timestamp"] = pd.to_datetime(local_times.dt.strftime("%Y-%m-%dT%H:%M:%S") + args.time_offset, utc=True)
-    frames = df[df["split"] == "frames"].copy()
-    if frames["timestamp"].duplicated().any():
-        raise ValueError("Multiple .npy files have the same observation time")
-    frames["available_at"] = frames["timestamp"] + pd.to_timedelta(args.available_delay_minutes, unit="min")
-    targets = {split: df.loc[df["split"] == split, ["timestamp"]].copy() for split in ("train", "valid", "test")}
-    for split, table in targets.items():
+        table = pd.DataFrame({"timestamp": [Path(name).stem for name in names]})
+        local_times = pd.to_datetime(table["timestamp"], format=args.filename_format)
+        table["timestamp"] = pd.to_datetime(local_times.dt.strftime("%Y-%m-%dT%H:%M:%S") + args.time_offset, utc=True)
         if table.empty or table["timestamp"].duplicated().any():
             raise ValueError(f"Empty or duplicate {split} targets")
         missing = set(table["timestamp"]) - set(frames["timestamp"])
         if missing:
             raise ValueError(f"Missing {split} target files, first timestamp: {min(missing)}")
+        targets[split] = table
     for left, right in (("train", "valid"), ("train", "test"), ("valid", "test")):
         if set(targets[left]["timestamp"]) & set(targets[right]["timestamp"]):
             raise ValueError(f"{left} and {right} targets overlap")

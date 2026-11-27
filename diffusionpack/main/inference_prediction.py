@@ -25,17 +25,17 @@ def infer_prediction(config):
         expected = dict(noise_conditioning="scrd_timestep", prediction_target="residual", reverse_variance="beta")
         if any(training.get(key) != value for key, value in expected.items()):
             raise ValueError("SCRD checkpoint must use integer time, residual targets and core beta variance")
-        settings = saved["model_config"]
-        model = SCRDUNet(**settings).to(device)
+        model_class = SCRDUNet
         sample_function = scrd_prediction_sample
     else:
         if training.get("backbone", "ddpm") != "ddpm":
             raise ValueError("Unknown prediction backbone in checkpoint")
         if training.get("noise_conditioning") != "gamma_adagn":
             raise ValueError("Retrain old conditional checkpoints for gamma conditioning and AdaGN")
-        settings = saved["model_config"]
-        model = PredictionUNet(**settings).to(device)
+        model_class = PredictionUNet
         sample_function = prediction_sample
+    settings = saved["model_config"]
+    model = model_class(**settings).to(device)
     model.load_state_dict(saved[config.weights])
     model.eval()
     source = ForecastDataset(

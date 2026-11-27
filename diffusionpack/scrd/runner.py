@@ -257,7 +257,7 @@ def infer(config, *, evaluate=False, persistence=False):
             if test_times & previous_targets:
                 raise ValueError(f"Test targets overlap the checkpoint's {split} targets")
     scores = forecast(trained, diffusion, source, count=config.max_origins, members=config.samples,
-                      output=config.output, persistence=persistence)
+                      output=config.output)
     if not scores.empty:
         print(scores.groupby("lead_minutes")[["mse", "mae", "bias", "centered_mse"]].mean().to_string())
     return scores

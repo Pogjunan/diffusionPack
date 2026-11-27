@@ -74,8 +74,9 @@ class ForecastDiffusion(nn.Module):
         return condition[:, -self.map_channels:].repeat(1, self.future_steps, 1, 1)
 
     def make_target(self, future, condition):
-        check_shape(future, self.last_frame(condition))
-        return future - self.last_frame(condition) if self.target == "residual" else future
+        last = self.last_frame(condition)
+        check_shape(future, last)
+        return future - last if self.target == "residual" else future
 
     def q_sample(self, clean, t, noise):
         check_shape(clean, noise)
@@ -103,10 +104,11 @@ class ForecastDiffusion(nn.Module):
         if noise is None:
             noise = torch.randn_like(clean)
         check_shape(clean, noise)
-        gamma = step_value(self.alpha_bars, t, clean)
+        gamma = None
         if self.noise_conditioning == "gamma":
+            low = step_value(self.alpha_bars, t, clean)
             high = step_value(self.alpha_bars_prev, t, clean)
-            gamma = torch.lerp(gamma, high, torch.rand_like(gamma))
+            gamma = torch.lerp(low, high, torch.rand_like(low))
             noisy = gamma.sqrt() * clean + (1 - gamma).sqrt() * noise
         else:
             noisy = self.q_sample(clean, t, noise)

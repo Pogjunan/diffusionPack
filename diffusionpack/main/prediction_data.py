@@ -63,13 +63,18 @@ class ForecastDataset(Dataset):
             allowed_targets = set(target_times)
             self.rejections["target_outside_split"] = 0
         lag = timedelta(minutes=history_lag_minutes)
-        history_ends = sorted(self.records) if origin_time is None else [pd.to_datetime(origin_time, utc=True, format="ISO8601") - lag]
+        if origin_time is None:
+            history_ends = sorted(self.records)
+        else:
+            origin = pd.to_datetime(origin_time, utc=True, format="ISO8601")
+            history_ends = [origin - lag]
         history_times = self.records.keys()
         if not require_target:
             history_times = {time for time, (path, _) in self.records.items() if path.is_file()}
         for history_end in history_ends:
             origin = history_end + lag
-            history = tuple(history_end - self.cadence * k for k in reversed(range(history_steps)))
+            history_start = history_end - self.cadence * (history_steps - 1)
+            history = tuple(history_start + self.cadence * k for k in range(history_steps))
             if any(moment not in history_times for moment in history):
                 self.rejections["missing_history"] += 1
                 continue

@@ -63,6 +63,6 @@ def main(output):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Prepare forecast CSV files")
+    parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="runs/prediction_scrd_smoke")
     main(parser.parse_args().output)

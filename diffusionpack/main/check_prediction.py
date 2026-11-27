@@ -42,7 +42,7 @@ def check_prediction(config, valid_csv=None, valid_targets=None, test_csv=None,
             if max(targets[first]) > min(origin for origin, _, _ in splits[second].windows):
                 raise ValueError(f"{first}/{second} are not chronologically separated; review the split")
     if len(splits) < 3:
-        print("Split audit is partial: provide the missing validation/test CSVs for all checks.")
+        print("Set validation and test CSVs to check all three splits.")
 
     if check_all:
         for name in ("train", "valid"):
@@ -67,5 +67,5 @@ def check_prediction(config, valid_csv=None, valid_targets=None, test_csv=None,
         raise FloatingPointError("Missing or non-finite model gradients")
     print(f"Device: {device}; history: {tuple(history.shape)}; future: {tuple(future.shape)}")
     print(f"Backbone: {config.backbone}; loss: {loss.item():.6f}; gradients finite")
-    print("Preflight passed for the checked batch. No weights or files were changed.")
+    print("Batch check passed.")
     return loss.item()

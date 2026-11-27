@@ -47,7 +47,6 @@ def prediction_dataset(config):
         lead_minutes=config.lead_minutes,
         value_min=config.value_min,
         value_max=config.value_max,
-        require_target=True,
         target_csv=config.target_csv,
     )
 
