@@ -1,4 +1,5 @@
 import torch
+from tqdm.auto import tqdm
 from .config import num_diff_steps, beta_start, beta_end
 
 betas = torch.linspace(beta_start, beta_end, num_diff_steps, dtype=torch.float64)
@@ -84,9 +85,12 @@ def p_sample(model, x_t, t, noise=None, *, clip_denoised=True):
 
 
 @torch.no_grad()
-def p_sample_loop(model, shape, *, device, dtype=torch.float32, clip_denoised=True):
+def p_sample_loop(model, shape, *, device, dtype=torch.float32, clip_denoised=True, progress=False):
     x_t = torch.randn(shape, device=device, dtype=dtype)
-    for step in reversed(range(num_diff_steps)):
+    for step in tqdm(
+        reversed(range(num_diff_steps)), total=num_diff_steps, desc="DDPM sampling",
+        dynamic_ncols=True, disable=not progress,
+    ):
         t = torch.full((x_t.shape[0],), step, device=x_t.device, dtype=torch.long)
         x_t = p_sample(model, x_t, t, clip_denoised=clip_denoised)
     return x_t
