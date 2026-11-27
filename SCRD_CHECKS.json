@@ -1,0 +1,167 @@
+{
+  "date": "2026-11-26",
+  "baseline_commit": "0e819b0bc685c76c8ba510f1e4f769629b29e028",
+  "csv_cleanup_included": true,
+  "github_pushed": false,
+  "full_pytest": {
+    "passed": 91,
+    "failed": 0,
+    "command": "OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python -m pytest -q"
+  },
+  "after_final_metric_guard": {
+    "passed": 12,
+    "failed": 0,
+    "command": "python -m pytest -q tests/test_scrd_runner.py"
+  },
+  "legacy_contract_suite": {
+    "passed": 16,
+    "skipped_for_missing_data": 3
+  },
+  "neural_smoke": {
+    "kind": "synthetic CPU execution only",
+    "optimizer_steps": 4,
+    "history_steps": 5,
+    "future_steps": 4,
+    "resolution": 16,
+    "diffusion_steps": 1000,
+    "widths": [
+      32,
+      64,
+      128,
+      256
+    ],
+    "tcu_depth": 3,
+    "forecast_files": 4,
+    "forecast_shape": [
+      1,
+      16,
+      16
+    ],
+    "diagnosis_levels": [
+      0,
+      50,
+      200,
+      500,
+      799,
+      999
+    ],
+    "torch_version": "2.15.0+cpu",
+    "cuda_available": false,
+    "seconds": 10.66,
+    "quality_validated": false
+  },
+  "data_bridge": {
+    "train": {
+      "old_count": 8,
+      "new_count": 8,
+      "origins_and_all_frames_equal": true
+    },
+    "valid": {
+      "old_count": 9,
+      "new_count": 9,
+      "origins_and_all_frames_equal": true
+    },
+    "test": {
+      "old_count": 9,
+      "new_count": 9,
+      "origins_and_all_frames_equal": true
+    }
+  },
+  "resume": {
+    "continuous_3_vs_2_plus_1": "bit-exact model, Adam, RNG and losses",
+    "entry": "standalone run_scrd.py only; Prediction resume is functional, not bit-exact"
+  },
+  "unchanged_existing_core": true,
+  "actual_SSI_training": "NOT RUN: data not supplied",
+  "old_failure_reproduction": "NOT RUN: failing checkpoint not supplied",
+  "GPU_training_and_image_quality": "NOT RUN: no CUDA or actual data",
+  "paper_radar_metrics": "NOT RUN; new runner reports MSE/MAE/bias, not the full paper evaluation",
+  "previous_full_pytest": {
+    "passed": 83,
+    "failed": 0,
+    "seconds": 6.17,
+    "command": "OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python -m pytest -q"
+  },
+  "prediction_integration": {
+    "kind": "synthetic CPU integration only",
+    "entry": "train_prediction / infer_prediction",
+    "backbone": "scrd",
+    "optimizer_steps": 3,
+    "diffusion_steps": 1000,
+    "reverse_variance": "beta",
+    "history_steps": 5,
+    "future_steps": 4,
+    "resolution": 16,
+    "widths": [
+      32,
+      64,
+      128,
+      256
+    ],
+    "forecast_files": 4,
+    "forecast_shape": [
+      1,
+      16,
+      16
+    ],
+    "resume": "functional; not bit-exact continuation",
+    "weights": "model",
+    "seconds": 9.11,
+    "quality_validated": false,
+    "torch_version": "2.15.0+cpu",
+    "cuda_available": false
+  },
+  "prediction_core_calls_verified": [
+    "diffusion.ddpm_loss",
+    "diffusion.q_sample",
+    "diffusion.p_sample x 1000"
+  ],
+  "prediction_integration_tests": {
+    "passed": 8,
+    "failed": 0,
+    "includes_existing_gamma_checkpoint_compatibility": true
+  },
+  "incremental_patch_base": "diffusionPack_scrd_rebuild.zip (previous delivered rebuild)",
+  "modular_review": {
+    "prior_tests": 91,
+    "current_tests": 99,
+    "pstack_tests": 24,
+    "pstack_split_fixture_rows": 48,
+    "pstack_negative_control_exit": 2,
+    "source_model_forward_exact": true,
+    "pre_post_state_and_gradients_exact": true,
+    "cpu_128_forward_backward": true,
+    "cpu_512_forward_only": true,
+    "actual_SSI": "NOT RUN",
+    "gpu": "NOT RUN",
+    "smoke": {
+      "kind": "synthetic CPU integration only",
+      "entry": "train_prediction / infer_prediction",
+      "backbone": "scrd",
+      "optimizer_steps": 3,
+      "diffusion_steps": 1000,
+      "reverse_variance": "beta",
+      "history_steps": 5,
+      "future_steps": 4,
+      "resolution": 16,
+      "widths": [
+        32,
+        64,
+        128,
+        256
+      ],
+      "forecast_files": 4,
+      "forecast_shape": [
+        1,
+        16,
+        16
+      ],
+      "resume": "functional; not bit-exact continuation",
+      "weights": "model",
+      "seconds": 15.64,
+      "quality_validated": false,
+      "torch_version": "2.10.0+cpu",
+      "cuda_available": false
+    }
+  }
+}

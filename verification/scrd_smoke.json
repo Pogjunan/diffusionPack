@@ -1,0 +1,29 @@
+{
+  "kind": "synthetic CPU integration only",
+  "entry": "train_prediction / infer_prediction",
+  "backbone": "scrd",
+  "optimizer_steps": 3,
+  "diffusion_steps": 1000,
+  "reverse_variance": "beta",
+  "history_steps": 5,
+  "future_steps": 4,
+  "resolution": 16,
+  "widths": [
+    32,
+    64,
+    128,
+    256
+  ],
+  "forecast_files": 4,
+  "forecast_shape": [
+    1,
+    16,
+    16
+  ],
+  "resume": "functional; not bit-exact continuation",
+  "weights": "model",
+  "seconds": 15.64,
+  "quality_validated": false,
+  "torch_version": "2.10.0+cpu",
+  "cuda_available": false
+}

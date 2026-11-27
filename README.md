@@ -16,7 +16,7 @@ Implementations are developed with reference to original research papers and pub
 | Restoration | Degraded image | Clean image |
 | Prediction | Past spatial maps | One or more future maps |
 
-Choose `model = "original"` for the CIFAR-10 U-Net defaults or `model = "light"` for a smaller U-Net. All tasks use the same 1,000-step DDPM reverse schedule. Unconditional generation keeps integer timestep conditioning. Restoration and prediction use continuous gamma conditioning during training and AdaGN in the residual blocks.
+Choose `model = "original"` for the CIFAR-10 U-Net defaults or `model = "light"` for a smaller U-Net. All tasks use the same 1,000-step DDPM reverse schedule. Unconditional generation keeps integer timestep conditioning. Restoration and the DDPM Prediction backbone use continuous gamma conditioning during training and AdaGN in the residual blocks. SCRD uses integer timesteps and its own STCG/SWCI architecture.
 
 In [run.py](run.py), set `task` to `"unconditional"`, `"restore"` or `"prediction"` and `action` to `"train"` or `"inference"`. Run `python run.py`.
 
@@ -74,7 +74,7 @@ pip install --upgrade --force-reinstall git+https://github.com/Pogjunan/diffusio
 
 ## Forecasting with SSI maps
 
-Set the grid size, channel multipliers and scaling bounds in [prediction_config.py](diffusionpack/prediction_config.py) or pass them to `PredictionTrainConfig` in [run_prediction.py](run_prediction.py). Choose the bounds from the training data or known physical limits. Forecasts can exceed these bounds. Each row in `train.csv` or `test.csv` contains `timestamp,path,available_at` for one NumPy grid. Both times include a UTC offset. Split the series by time before training.
+Set the grid size, channel multipliers and scaling bounds in [prediction_config.py](diffusionpack/prediction_config.py) or pass them to `PredictionTrainConfig` in [run_prediction.py](run_prediction.py). Choose the bounds from the training data or known physical limits. Forecasts can exceed these bounds. Each row in `train.csv` or `test.csv` contains `timestamp,path,available_at` for one NumPy grid. Use ISO 8601 timestamps with a UTC offset (e.g., `2026-01-01T12:00:00+09:00`). Times without an offset are treated as UTC. All times are converted to UTC. Split the series by time before training.
 
 `history_lag_minutes` is the interval from the last input map to forecast issue. `lead_minutes` runs from issue to the first target; later targets are spaced by `cadence_minutes`. With both set to 30, an issue at 12:00 uses maps through 11:30 and predicts 12:30. Each input must be available by 12:00.
 
@@ -85,12 +85,26 @@ PredictionTrainConfig(history_steps=5, future_steps=4, map_channels=1,
                       cadence_minutes=30, lead_minutes=30)
 ```
 
-Set the scaling bounds and manifest before training. The model receives 9 channels and predicts 4 noise channels. It generates the four future maps jointly, then saves one `.npy` file per lead time. Maps from the same ensemble draw share a sample index. Inference does not require future targets. The default `future_steps=1` retains single-map prediction.
+Set the scaling bounds and `csv_path` before training. The model receives 9 channels and predicts 4 noise channels. It generates the four future maps jointly, then saves one `.npy` file per lead time. Maps from the same ensemble draw share a sample index. Inference does not require future targets. The default `future_steps=1` retains single-map prediction.
 
-Run `python run_prediction.py` with `mode = "train"` or `mode = "inference"`. Set `samples` to draw several forecasts per issue. Each call saves its forecast maps in a separate folder.
+Run `python run_prediction.py` first with `mode = "check"`, then with `mode = "train"` or `mode = "inference"`. Set `samples` to draw several forecasts per issue. Each call saves its forecast maps in a separate folder. When resuming training, use the same training CSV and data; their contents are not checked against the checkpoint.
 
 ## Conditional training and checkpoints
 
 Gamma is sampled between `alpha_bars[t]` and `alpha_bars_prev[t]` during training. The same gamma is used to create the noisy target and as the input to the existing sinusoidal embedding. During sampling, the model receives the fixed `alpha_bars[t]` at each discrete DDPM step. The schedule and reverse equations are unchanged. This is not a full SR3, Palette or MCVD reproduction.
 
 The new conditional models need new checkpoints because the noise-level input and AdaGN projection sizes differ from the previous implementation. Unconditional checkpoint shapes are unchanged. The training/inference schedules are not independently configurable yet. Run `python -m pytest -q` for structural and CPU integration tests; actual forecast accuracy and GPU training require separate experiments.
+
+## SCRD comparison
+
+SCRD is also selectable in the existing Prediction training and inference path.
+See [PREDICTION_SCRD.md](PREDICTION_SCRD.md) for the integrated path and its settings.
+The `run_prediction.py` example now selects SCRD; `PredictionTrainConfig()` still
+defaults to the existing gamma-conditioned DDPM backbone.
+
+The SCRD modules live in `diffusionpack/scrd/` (`stcg.py`, `swci.py`, `unet.py`, `prediction.py`). The common Prediction path calls the original DDPM loss and sampler. `comparison.py` is a separate configurable diagnostic engine. See [SCRD_MODULAR_REVIEW.md](SCRD_MODULAR_REVIEW.md) for the latest checks.
+
+For the SCRD modules, matched DDPM controls, and training/inference commands,
+see [SCRD_README.md](SCRD_README.md). The paper-to-code review is in
+[SCRD_REVIEW.md](SCRD_REVIEW.md). Existing unconditional, Restore, and Prediction
+model implementations are preserved.

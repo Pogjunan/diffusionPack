@@ -2,7 +2,7 @@ from .config import Config
 
 
 class PredictionTrainConfig(Config):
-    manifest = "data/forecast/train.csv"
+    csv_path = "data/forecast/train.csv"
     model = "light"
     resolution = 32
     channel_mult = None
@@ -29,11 +29,20 @@ class PredictionTrainConfig(Config):
     history_lag_minutes = 0
     base_channels = None
     future_steps = 1
+    backbone = "ddpm"  # ddpm: existing gamma model; scrd: residual + STCG/SWCI.
+    target_csv = None  # Optional timestamp list restricting this split's targets.
+    scrd_widths = (32, 64, 128, 256)
+    scrd_window = 8
+    scrd_tcu_depth = 3
+    scrd_time_dim = 128
+    scrd_norm_groups = 32
+    scrd_output_norm_groups = 8
+    scrd_use_tcu = True
 
 
 class PredictionInferenceConfig(Config):
     checkpoint = "runs/prediction/latest.pt"
-    manifest = "data/forecast/test.csv"
+    csv_path = "data/forecast/test.csv"
     output = "runs/prediction/forecasts"
     origin_time = None
     max_origins = 1
@@ -41,3 +50,4 @@ class PredictionInferenceConfig(Config):
     weights = "ema"
     progress = True
     samples = 1
+    target_csv = None

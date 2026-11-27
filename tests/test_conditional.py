@@ -1,8 +1,8 @@
-import csv
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 import torch
 from PIL import Image
@@ -105,27 +105,26 @@ def test_joint_prediction_shape(history, future, channels, resolution):
     assert model.conv_out.out_channels == future * channels
 
 
-def write_manifest(folder, indices, *, late_index=None, channels=2):
+def write_csv(folder, indices, *, late_index=None, channels=2):
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / 'maps.csv'
-    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    with path.open('w', newline='') as stream:
-        writer = csv.writer(stream)
-        writer.writerow(['timestamp', 'path', 'available_at'])
-        for i in indices:
-            moment = start + timedelta(minutes=30 * i)
-            available = moment + timedelta(minutes=45 if i == late_index else 5)
-            name = f'{i}.npy'
-            # Values identify both the frame and the channel.
-            grid = np.stack([np.full((8, 8), 10 * i + c, dtype=np.float32) for c in range(channels)])
-            np.save(folder / name, grid)
-            writer.writerow([moment.isoformat(), name, available.isoformat()])
+    start = pd.Timestamp('2026-01-01T00:00:00Z')
+    rows = []
+    for i in indices:
+        moment = start + timedelta(minutes=30 * i)
+        available = moment + timedelta(minutes=45 if i == late_index else 5)
+        name = f'{i}.npy'
+        # Values identify both the frame and the channel.
+        grid = np.stack([np.full((8, 8), 10 * i + c, dtype=np.float32) for c in range(channels)])
+        np.save(folder / name, grid)
+        rows.append([moment.isoformat(), name, available.isoformat()])
+    pd.DataFrame(rows, columns=['timestamp', 'path', 'available_at']).to_csv(path, index=False)
     return path
 
 
 def test_forecast_window_and_channel_order(tmp_path):
-    manifest = write_manifest(tmp_path, range(8))
-    source = ForecastDataset(manifest, history_steps=3, future_steps=3, map_channels=2, resolution=8,
+    csv_path = write_csv(tmp_path, range(8))
+    source = ForecastDataset(csv_path, history_steps=3, future_steps=3, map_channels=2, resolution=8,
                              cadence_minutes=30, history_lag_minutes=30, lead_minutes=30,
                              value_min=0, value_max=100, origin_time='2026-01-01T01:30:00Z')
     condition, future, origin, valid = source[0]
@@ -137,27 +136,58 @@ def test_forecast_window_and_channel_order(tmp_path):
 
 
 def test_no_future_required_at_inference(tmp_path):
-    manifest = write_manifest(tmp_path, range(3))
+    csv_path = write_csv(tmp_path, range(3))
     options = dict(history_steps=3, future_steps=4, map_channels=2, resolution=8,
                    history_lag_minutes=30, value_min=0, value_max=100,
                    origin_time='2026-01-01T01:30:00Z')
-    source = ForecastDataset(manifest, require_target=False, **options)
+    source = ForecastDataset(csv_path, require_target=False, **options)
     condition, future, _, valid = source[0]
     assert condition.shape == (6, 8, 8)
     assert future.numel() == 0 and len(valid) == 4
     with pytest.raises(ValueError, match="missing_target"):
-        ForecastDataset(manifest, require_target=True, **options)
+        ForecastDataset(csv_path, require_target=True, **options)
     (tmp_path / '2.npy').unlink()
     with pytest.raises(ValueError, match="missing_history"):
-        ForecastDataset(manifest, require_target=False, **options)
+        ForecastDataset(csv_path, require_target=False, **options)
 
 
 def test_late_history_rejected(tmp_path):
-    manifest = write_manifest(tmp_path, range(8), late_index=2)
+    csv_path = write_csv(tmp_path, range(8), late_index=2)
     with pytest.raises(ValueError, match="late_history"):
-        ForecastDataset(manifest, history_steps=3, future_steps=3, map_channels=2, resolution=8,
+        ForecastDataset(csv_path, history_steps=3, future_steps=3, map_channels=2, resolution=8,
                         history_lag_minutes=30, value_min=0, value_max=100,
                         origin_time='2026-01-01T01:30:00Z')
+
+
+def test_csv_time_conversion(tmp_path):
+    csv_path = write_csv(tmp_path, range(3))
+    df = pd.read_csv(csv_path)
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True).dt.tz_convert("Asia/Seoul").astype(str)
+    df.to_csv(csv_path, index=False)
+    source = ForecastDataset(csv_path, history_steps=3, future_steps=2, map_channels=2,
+                             resolution=8, history_lag_minutes=30, value_min=0, value_max=100,
+                             require_target=False, origin_time="2026-01-01T10:30:00+09:00")
+    assert source[0][2] == "2026-01-01T01:30:00+00:00"
+
+
+@pytest.mark.parametrize("problem,message", [
+    ("duplicate", "Duplicate timestamps"),
+    ("missing", "Missing timestamp"),
+    ("early", "Availability predates observation"),
+])
+def test_invalid_csv(tmp_path, problem, message):
+    csv_path = write_csv(tmp_path, range(3))
+    df = pd.read_csv(csv_path)
+    if problem == "duplicate":
+        df.loc[1, "timestamp"] = "2026-01-01T09:00:00+09:00"
+    elif problem == "missing":
+        df.loc[0, "available_at"] = None
+    else:
+        df.loc[0, "available_at"] = "2025-12-31T23:59:00Z"
+    df.to_csv(csv_path, index=False)
+    with pytest.raises(ValueError, match=message):
+        ForecastDataset(csv_path, history_steps=3, map_channels=2, resolution=8,
+                        value_min=0, value_max=100, require_target=False)
 
 
 @pytest.fixture
@@ -177,9 +207,9 @@ def short_schedule(monkeypatch):
 
 
 def test_prediction_train_resume_inference(tmp_path, short_schedule):
-    manifest = write_manifest(tmp_path / 'train', range(8))
-    inference_manifest = write_manifest(tmp_path / 'inference', range(3))
-    options = dict(manifest=str(manifest), resolution=8, base_channels=32,
+    csv_path = write_csv(tmp_path / 'train', range(8))
+    inference_csv_path = write_csv(tmp_path / 'inference', range(3))
+    options = dict(csv_path=str(csv_path), resolution=8, base_channels=32,
                    channel_mult=(1, 2), history_steps=3, future_steps=3, map_channels=2,
                    history_lag_minutes=30, value_min=0, value_max=100,
                    batch_size=2, epochs=None, warmup_steps=0, device='cpu', amp=False,
@@ -193,13 +223,13 @@ def test_prediction_train_resume_inference(tmp_path, short_schedule):
     assert train.load_checkpoint(checkpoint)['step'] == 2
     output = tmp_path / 'output'
     records = infer_prediction(PredictionInferenceConfig(
-        checkpoint=str(checkpoint), manifest=str(inference_manifest), output=str(output),
+        checkpoint=str(checkpoint), csv_path=str(inference_csv_path), output=str(output),
         origin_time='2026-01-01T01:30:00Z', samples=2, device='cpu', progress=False))
     assert len(records) == 6
     for i, (origin, valid, path, units) in enumerate(records):
         assert origin == '2026-01-01T01:30:00+00:00'
         assert path.endswith(f'{30 * (i % 3 + 1)}min_sample_{i // 3 + 1:03d}.npy')
-        assert valid == (datetime.fromisoformat(origin) + timedelta(minutes=30 * (i % 3 + 1))).isoformat()
+        assert valid == (pd.Timestamp(origin) + timedelta(minutes=30 * (i % 3 + 1))).isoformat()
         grid = np.load(output / path)
         assert grid.shape == (2, 8, 8) and np.isfinite(grid).all()
     with pytest.raises(ValueError, match='same model'):
