@@ -28,6 +28,7 @@ class PredictionTrainConfig:
     amp: bool = True
     progress: bool = True
     seed: int = 42
+    history_lag_minutes: int = 0
 
 
 @dataclass
@@ -41,3 +42,4 @@ class PredictionInferenceConfig:
     weights: str = "ema"
     progress: bool = True
     seed: int = 42
+    samples: int = 1

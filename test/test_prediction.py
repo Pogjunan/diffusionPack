@@ -1,4 +1,5 @@
 import csv
+import hashlib
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -27,7 +28,7 @@ class TestPrediction(unittest.TestCase):
         self.start = datetime(2025, 1, 1, 0, 0, tzinfo=timezone(timedelta(hours=9)))
         self.make_manifest()
 
-    def make_manifest(self, *, missing=(), late=(), invalid=None):
+    def make_manifest(self, *, missing=(), late=(), invalid=None, delay_minutes=0):
         with self.manifest.open("w", newline="", encoding="utf-8") as handle:
             writer = csv.writer(handle)
             writer.writerow(["timestamp", "path", "available_at"])
@@ -35,7 +36,7 @@ class TestPrediction(unittest.TestCase):
                 if index in missing:
                     continue
                 stamp = self.start + timedelta(minutes=30 * index)
-                available = stamp + timedelta(minutes=20 if index in late else 0)
+                available = stamp + timedelta(minutes=delay_minutes + (20 if index in late else 0))
                 path = self.root / f"{index:02d}.npy"
                 grid = np.full((8, 8), index * 100.0, dtype=np.float32)
                 if index == invalid:
@@ -121,6 +122,32 @@ class TestPrediction(unittest.TestCase):
         self.assertGreater(data.rejections["late_history"], 0)
         self.assertNotEqual(data.windows[0][0], parse_time((self.start + timedelta(minutes=60)).isoformat()))
 
+    def test_issue_lag_preserves_lead_with_delayed_observations(self):
+        self.make_manifest(delay_minutes=1)
+        with self.assertRaisesRegex(ValueError, "late_history"):
+            self.dataset()
+        data = self.dataset(history_lag_minutes=30)
+        self.assertEqual(len(data), 4)
+        for origin, history, target in data.windows:
+            self.assertEqual(origin - history[-1], timedelta(minutes=30))
+            self.assertEqual(target - origin, timedelta(minutes=60))
+            self.assertTrue(all(data.records[stamp][1] <= origin for stamp in history))
+        self.make_manifest(delay_minutes=31)
+        with self.assertRaisesRegex(ValueError, "late_history"):
+            self.dataset(history_lag_minutes=30)
+
+    def test_forecast_issued_between_grid_timestamps(self):
+        self.make_manifest(delay_minutes=1)
+        origin = self.start + timedelta(minutes=241)
+        data = self.dataset(history_lag_minutes=1, require_target=False, origin_time=origin)
+        issued, history, target = data.windows[0]
+        self.assertNotIn(issued, data.records)
+        self.assertEqual(issued, origin)
+        self.assertEqual(history[-1], origin - timedelta(minutes=1))
+        self.assertEqual(target, origin + timedelta(minutes=60))
+        with self.assertRaisesRegex(ValueError, "missing_target"):
+            self.dataset(history_lag_minutes=1, origin_time=origin)
+
     def test_unavailable_future_still_allows_inference(self):
         origin = (self.start + timedelta(minutes=240)).isoformat()
         with self.assertRaises(ValueError):
@@ -160,6 +187,10 @@ class TestPrediction(unittest.TestCase):
         history = torch.randn(1, 3, 8, 8)
         pred = model(future, torch.tensor([5]), history)
         self.assertEqual(pred.shape, future.shape)
+        model.eval()
+        with torch.no_grad():
+            changed = model(future, torch.tensor([5]), history.flip(1))
+        self.assertFalse(torch.equal(pred, changed))
         loss = prediction_loss(model, future, history)
         loss.backward()
         self.assertGreater(model.conv_in.weight.grad[:, 1:].abs().sum().item(), 0)
@@ -238,7 +269,26 @@ class TestPrediction(unittest.TestCase):
         self.assertTrue(np.isfinite(produced).all())
         self.assertTrue(((produced >= 0) & (produced <= 1000)).all())
         self.assertEqual(records[0][3], "W/m2")
-        self.assertTrue((self.root / "forecasts" / "predictions.csv").is_file())
+        first = self.root / "forecasts" / records[0][2]
+        self.assertTrue((first.parent / "predictions.csv").is_file())
+        inference.seed = 51
+        inference.samples = 2
+        with patch.object(diffusion, "num_diff_steps", 3):
+            second = infer_prediction(inference)
+            replay = infer_prediction(inference)
+        paths = [self.root / "forecasts" / row[2] for row in (records + second + replay)]
+        self.assertEqual(len(set(paths)), 5)
+        self.assertEqual(len({path.parent for path in paths}), 3)
+        np.testing.assert_array_equal(np.load(first), produced)
+        np.testing.assert_array_equal(np.load(paths[1]), np.load(paths[3]))
+        self.assertFalse(np.array_equal(np.load(paths[1]), np.load(paths[2])))
+        with (paths[1].parent / "predictions.csv").open() as stream:
+            rows = list(csv.DictReader(stream))
+        self.assertEqual([row["sample"] for row in rows], ["1", "2"])
+        self.assertEqual(rows[0]["checkpoint_sha256"], hashlib.sha256(checkpoint.read_bytes()).hexdigest())
+        self.assertEqual(rows[0]["step"], "2")
+        self.assertEqual(rows[0]["seed"], "51")
+        self.assertEqual(paths[1].name, rows[0]["path"])
 
 
 if __name__ == "__main__":

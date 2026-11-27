@@ -43,6 +43,7 @@ def train_prediction(config):
         map_channels=config.map_channels,
         resolution=config.resolution,
         cadence_minutes=config.cadence_minutes,
+        history_lag_minutes=config.history_lag_minutes,
         lead_minutes=config.lead_minutes,
         value_min=config.value_min,
         value_max=config.value_max,
@@ -55,20 +56,22 @@ def train_prediction(config):
         task="prediction",
         manifest_sha256=manifest_hash(config.manifest),
         cadence_minutes=config.cadence_minutes,
+        history_lag_minutes=config.history_lag_minutes,
         lead_minutes=config.lead_minutes,
         value_min=config.value_min,
         value_max=config.value_max,
         units=config.units,
     )
     checkpoint = torch.load(config.resume, map_location="cpu", weights_only=True) if config.resume else None
-    previous = checkpoint.get("training", {}) if checkpoint else {}
+    previous = {"history_lag_minutes": 0, **checkpoint.get("training", {})} if checkpoint else {}
+    start_epoch = previous.pop("epoch", None) if checkpoint else 0.0
     lr = previous.get("lr", learning_rate) if config.lr is None else config.lr
     warmup = previous.get("warmup", warmup_steps) if config.warmup_steps is None else config.warmup_steps
     current.update(lr=lr, warmup=warmup)
     if lr <= 0 or warmup < 0:
         raise ValueError("Learning rate must be positive and warmup nonnegative")
     if checkpoint and (checkpoint["model_config"] != settings or checkpoint["dataset"] != "forecast" or previous != current):
-        raise ValueError("Resume requires identical model, manifest, horizon, scale and optimizer settings")
+        raise ValueError("Resume requires identical model, manifest, timing, scale and optimizer settings")
     model = PredictionUNet(**settings).to(device)
     optimizer, scheduler, ema_model = init_training(model, lr=lr, warmup=warmup)
     amp = config.amp and device.type == "cuda"
@@ -117,9 +120,10 @@ def train_prediction(config):
                 if step == 1 or step % config.log_every == 0:
                     bar.set_postfix(loss=f"{loss.item():.4f}", lr=f"{optimizer.param_groups[0]['lr']:.2e}")
                 if step % config.save_every == 0 or step == target_steps:
+                    epoch = None if start_epoch is None else start_epoch + (step - start_step) / len(loader)
                     save_checkpoint(
                         save_path, step, model, ema_model, optimizer,
-                        scheduler, scaler, settings, "forecast", current,
+                        scheduler, scaler, settings, "forecast", dict(current, epoch=epoch),
                     )
                 if step == target_steps:
                     break

@@ -13,6 +13,7 @@ train_config = PredictionTrainConfig(
     history_steps=5,
     cadence_minutes=30,
     lead_minutes=30,
+    history_lag_minutes=0,
     value_min=None,
     value_max=None,
     units="W/m2",
@@ -26,6 +27,7 @@ inference_config = PredictionInferenceConfig(
     manifest="data/forecast/test.csv",
     output="runs/prediction/forecasts",
     max_origins=1,
+    samples=1,
 )
 
 

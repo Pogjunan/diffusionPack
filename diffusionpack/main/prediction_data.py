@@ -48,11 +48,13 @@ def manifest_hash(path):
 class ForecastDataset(Dataset):
     def __init__(self, manifest, *, history_steps=5, map_channels=1, resolution=32,
                  cadence_minutes=30, lead_minutes=30, value_min=None, value_max=None,
-                 require_target=True, origin_time=None):
+                 require_target=True, origin_time=None, history_lag_minutes=0):
         if history_steps < 1 or map_channels < 1 or resolution < 1:
             raise ValueError("History, channels and resolution must be positive")
         if cadence_minutes < 1 or lead_minutes < 1:
             raise ValueError("Cadence and lead must be strictly positive")
+        if type(history_lag_minutes) is not int or history_lag_minutes < 0:
+            raise ValueError("history_lag_minutes must be a nonnegative integer")
         if value_min is None or value_max is None or not np.isfinite([value_min, value_max]).all() or value_max <= value_min:
             raise ValueError("Set finite physical value_min and value_max with max > min")
         self.records = read_manifest(manifest)
@@ -66,12 +68,11 @@ class ForecastDataset(Dataset):
         self.require_target = require_target
         self.windows = []
         self.rejections = {"missing_history": 0, "late_history": 0, "missing_target": 0}
-        selected_origin = parse_time(origin_time) if origin_time is not None else None
-        if selected_origin is not None and selected_origin not in self.records:
-            raise ValueError("Requested prediction origin is not present in the manifest")
-        origins = [selected_origin] if selected_origin is not None else sorted(self.records)
-        for origin in origins:
-            history = tuple(origin - self.cadence * k for k in reversed(range(history_steps)))
+        lag = timedelta(minutes=history_lag_minutes)
+        history_ends = sorted(self.records) if origin_time is None else [parse_time(origin_time) - lag]
+        for history_end in history_ends:
+            origin = history_end + lag
+            history = tuple(history_end - self.cadence * k for k in reversed(range(history_steps)))
             if any(moment not in self.records for moment in history):
                 self.rejections["missing_history"] += 1
                 continue
