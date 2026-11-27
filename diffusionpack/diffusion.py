@@ -53,6 +53,7 @@ def reverse_mean(x_t, t, eps_pred):
     return (x_t - eps_scale * eps_pred) / step_value(alphas.sqrt(), t, x_t)
 
 
+# Reverse step: x_prev = mu_theta(x_t, t) + sqrt(beta_t) * z; z = 0 when t = 0.
 @torch.no_grad()
 def p_sample(model, x_t, t, noise=None, *, clip_denoised=True):
     t = t.to(device=x_t.device)
@@ -70,6 +71,7 @@ def p_sample(model, x_t, t, noise=None, *, clip_denoised=True):
     return mean + add_noise * std * noise
 
 
+# Sample x_0: start from Gaussian noise and repeat reverse steps for t = T-1, ..., 0.
 @torch.no_grad()
 def p_sample_loop(model, shape, *, device, dtype=torch.float32, clip_denoised=True, progress=False):
     x_t = torch.randn(shape, device=device, dtype=dtype)
