@@ -6,16 +6,15 @@ from torchvision.utils import save_image
 
 from ..backbone import DDPMUNet
 from ..diffusion import p_sample_loop
-from .train import choose_device
+from .train import choose_device, load_checkpoint
 
 
 def run_inference(args):
     if args.samples < 1 or args.batch_size < 1:
-        parser.error("samples and batch-size must be positive")
+        raise ValueError("Samples and batch size must be positive")
 
-    torch.manual_seed(args.seed)
     device = choose_device(args.device)
-    checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
+    checkpoint = load_checkpoint(args.checkpoint)
     config = checkpoint["model_config"]
     model = DDPMUNet(**config).to(device)
     model.load_state_dict(checkpoint[args.weights])
@@ -43,7 +42,6 @@ def main():
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--output", default="samples.png")
     parser.add_argument("--device", default="auto")
-    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--weights", choices=("ema", "model"), default="ema")
     parser.add_argument("--progress", action=argparse.BooleanOptionalAction, default=True)
     run_inference(parser.parse_args())

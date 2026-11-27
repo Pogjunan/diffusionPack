@@ -7,7 +7,7 @@ from torchvision.transforms.functional import to_pil_image
 from ..backbone.restore_unet import RestoreUNet
 from ..restore import restore_sample
 from .restore_data import CifarJpeg, ConditionImages
-from .train import choose_device
+from .train import choose_device, load_checkpoint
 
 
 @torch.inference_mode()
@@ -16,9 +16,8 @@ def infer_restore(config):
         raise ValueError("Batch size and sample count must be positive")
     if config.weights not in ("ema", "model"):
         raise ValueError("Choose ema or model weights")
-    torch.manual_seed(config.seed)
     device = choose_device(config.device)
-    saved = torch.load(config.checkpoint, map_location="cpu", weights_only=True)
+    saved = load_checkpoint(config.checkpoint)
     training = saved.get("training", {})
     if training.get("task") != "restore":
         raise ValueError("Choose a restoration checkpoint")

@@ -9,7 +9,7 @@ from ..backbone.prediction_unet import PredictionUNet
 from ..config import ema_decay, learning_rate, warmup_steps
 from ..prediction import prediction_loss
 from .prediction_data import ForecastDataset, manifest_hash
-from .train import choose_device, init_training, model_settings, save_checkpoint
+from .train import init_training, load_checkpoint, model_settings, save_checkpoint, start_training
 
 
 def prediction_settings(config):
@@ -35,8 +35,7 @@ def train_prediction(config):
         config.epochs is not None and config.epochs < 1 or
         config.batch_size < 1 or config.save_every < 1 or config.log_every < 1):
         raise ValueError("Training length, batch and logging intervals must be positive")
-    torch.manual_seed(config.seed)
-    device = choose_device(config.device)
+    device = start_training(config)
     dataset = ForecastDataset(
         config.manifest,
         history_steps=config.history_steps,
@@ -62,7 +61,7 @@ def train_prediction(config):
         value_max=config.value_max,
         units=config.units,
     )
-    checkpoint = torch.load(config.resume, map_location="cpu", weights_only=True) if config.resume else None
+    checkpoint = load_checkpoint(config.resume) if config.resume else None
     previous = {"history_lag_minutes": 0, **checkpoint.get("training", {})} if checkpoint else {}
     start_epoch = previous.pop("epoch", None) if checkpoint else 0.0
     lr = previous.get("lr", learning_rate) if config.lr is None else config.lr

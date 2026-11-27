@@ -9,7 +9,7 @@ from ..backbone.restore_unet import RestoreUNet
 from ..config import ema_decay, learning_rate, warmup_steps
 from ..restore import restore_loss
 from .restore_data import CifarJpeg, PairedImages
-from .train import choose_device, init_training, model_settings, save_checkpoint
+from .train import init_training, load_checkpoint, model_settings, save_checkpoint, start_training
 
 
 def train_restore(config):
@@ -18,8 +18,7 @@ def train_restore(config):
     if min(config.batch_size, config.save_every, config.steps or config.epochs or 0) < 1:
         raise ValueError("Batch size, training length and save interval must be positive")
 
-    torch.manual_seed(config.seed)
-    device = choose_device(config.device)
+    device = start_training(config)
     settings = model_settings(config.model)
     del settings["in_channels"]
     settings.update(resolution=config.resolution, condition_channels=config.condition_channels,
@@ -34,7 +33,7 @@ def train_restore(config):
     else:
         raise ValueError("Choose cifar10_jpeg or paired")
 
-    saved = torch.load(config.resume, map_location="cpu", weights_only=True) if config.resume else None
+    saved = load_checkpoint(config.resume) if config.resume else None
     training = {"task": "restore"}
     if config.dataset == "cifar10_jpeg":
         training["jpeg_quality"] = config.jpeg_quality

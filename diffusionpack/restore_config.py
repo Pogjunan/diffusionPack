@@ -1,41 +1,37 @@
-from dataclasses import dataclass
+from .config import Config
 
 
-@dataclass
-class RestoreTrainConfig:
-    dataset: str = "cifar10_jpeg"
-    data_root: str = "data"
-    condition_dir: str = "data/train/condition"
-    target_dir: str = "data/train/target"
-    jpeg_quality: int = 10
-    model: str = "light"
-    resolution: int = 32
-    condition_channels: int = 3
-    target_channels: int = 3
-    batch_size: int = 8
-    epochs: int | None = 30
-    steps: int | None = None
-    lr: float | None = None
-    warmup_steps: int | None = None
-    workers: int = 0
-    save_every: int = 1000
-    output: str = "runs/restore"
-    resume: str | None = None
-    device: str = "auto"
-    amp: bool = True
-    progress: bool = True
-    seed: int = 42
+class RestoreTrainConfig(Config):
+    dataset = "cifar10_jpeg"
+    data_root = "data"
+    condition_dir = "data/train/condition"
+    target_dir = "data/train/target"
+    jpeg_quality = 10
+    model = "light"
+    resolution = 32
+    condition_channels = 3
+    target_channels = 3
+    batch_size = 8
+    epochs = 30
+    steps = None
+    lr = None
+    warmup_steps = None
+    workers = 0
+    save_every = 1000
+    output = "runs/restore"
+    resume = None
+    device = "auto"
+    amp = True
+    progress = True
 
 
-@dataclass
-class RestoreInferenceConfig:
-    checkpoint: str = "runs/restore/latest.pt"
-    condition_path: str | None = None
-    data_root: str = "data"
-    output: str = "runs/restore/images"
-    samples: int | None = None
-    batch_size: int = 2
-    device: str = "auto"
-    weights: str = "ema"
-    progress: bool = True
-    seed: int = 42
+class RestoreInferenceConfig(Config):
+    checkpoint = "runs/restore/latest.pt"
+    condition_path = None
+    data_root = "data"
+    output = "runs/restore/images"
+    samples = None
+    batch_size = 2
+    device = "auto"
+    weights = "ema"
+    progress = True

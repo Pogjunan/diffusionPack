@@ -9,8 +9,11 @@ from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader, Dataset, Subset
 
 from ..backbone import DDPMUNet
-from ..config import ema_decay, learning_rate, warmup_steps
-from ..diffusion import ddpm_loss
+from ..config import ema_decay, learning_rate, random_seed, warmup_steps
+from ..diffusion import betas, ddpm_loss
+
+
+ddpm_schedule = (len(betas), betas[0].item(), betas[-1].item())
 
 
 class FolderImages(Dataset):
@@ -100,8 +103,10 @@ def get_dataset(args, channels):
         dataset = datasets.CIFAR10(root=args.data_root, train=True, download=True, transform=transform)
     elif args.dataset == "folder":
         dataset = FolderImages(args.data_root, transform)
-    else:
+    elif args.dataset == "fake":
         dataset = datasets.FakeData(size=256, image_size=(3, 32, 32), transform=transform)
+    else:
+        raise ValueError("Choose cifar10, folder or fake")
     if args.max_images > 0:
         dataset = Subset(dataset, range(min(args.max_images, len(dataset))))
     return dataset
@@ -111,6 +116,7 @@ def save_checkpoint(path, step, model, ema_model, optimizer, scheduler, scaler, 
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     state = {
+        "ddpm_schedule": ddpm_schedule,
         "step": step,
         "model_config": config,
         "dataset": dataset,
@@ -126,6 +132,14 @@ def save_checkpoint(path, step, model, ema_model, optimizer, scheduler, scaler, 
     temporary.replace(path)
 
 
+def load_checkpoint(path):
+    saved = torch.load(path, map_location="cpu", weights_only=True)
+    trained_schedule = saved.get("ddpm_schedule", (1000, 0.0001, 0.02))
+    if trained_schedule != ddpm_schedule:
+        raise ValueError(f"Checkpoint DDPM schedule {trained_schedule} differs from {ddpm_schedule}")
+    return saved
+
+
 def choose_device(value="auto"):
     if value == "auto":
         value = "cuda" if torch.cuda.is_available() else "cpu"
@@ -133,6 +147,12 @@ def choose_device(value="auto"):
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA unavailable; install CUDA-enabled PyTorch and check the NVIDIA driver")
     return device
+
+
+def start_training(config):
+    if not config.resume:
+        torch.manual_seed(random_seed)
+    return choose_device(config.device)
 
 
 def run_training(args):
@@ -146,9 +166,8 @@ def run_training(args):
         raise ValueError("Invalid steps, epochs, batch size, learning rate or warmup")
 
     args.output = args.output or (str(Path(args.resume).parent) if args.resume else f"runs/{args.model}_{args.dataset}")
-    torch.manual_seed(args.seed)
-    device = choose_device(args.device)
-    checkpoint = torch.load(args.resume, map_location="cpu", weights_only=True) if args.resume else None
+    device = start_training(args)
+    checkpoint = load_checkpoint(args.resume) if args.resume else None
     config = checkpoint["model_config"] if checkpoint else model_settings(args.model, args.channels)
     if checkpoint and checkpoint["dataset"] != args.dataset:
         raise ValueError("The resume checkpoint uses a different dataset type")
@@ -243,7 +262,6 @@ def main():
     parser.add_argument("--save-every", type=int, default=1000)
     parser.add_argument("--log-every", type=int, default=100)
     parser.add_argument("--device", default="auto")
-    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--amp", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--flip", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--progress", action=argparse.BooleanOptionalAction, default=True)

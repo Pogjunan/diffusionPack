@@ -1,45 +1,41 @@
-from dataclasses import dataclass
+from .config import Config
 
 
-@dataclass
-class PredictionTrainConfig:
-    manifest: str = "data/forecast/train.csv"
-    model: str = "light"
-    resolution: int = 32
-    channel_mult: tuple[int, ...] = (1, 2, 2, 2)
-    history_steps: int = 5
-    map_channels: int = 1
-    cadence_minutes: int = 30
-    lead_minutes: int = 30
-    value_min: float | None = None
-    value_max: float | None = None
-    units: str = "W/m2"
-    batch_size: int = 8
-    steps: int | None = None
-    epochs: int | None = 30
-    lr: float | None = None
-    warmup_steps: int | None = None
-    workers: int = 0
-    output: str = "runs/prediction"
-    resume: str | None = None
-    save_every: int = 1000
-    log_every: int = 100
-    device: str = "auto"
-    amp: bool = True
-    progress: bool = True
-    seed: int = 42
-    history_lag_minutes: int = 0
+class PredictionTrainConfig(Config):
+    manifest = "data/forecast/train.csv"
+    model = "light"
+    resolution = 32
+    channel_mult = (1, 2, 2, 2)
+    history_steps = 5
+    map_channels = 1
+    cadence_minutes = 30
+    lead_minutes = 30
+    value_min = None
+    value_max = None
+    units = "W/m2"
+    batch_size = 8
+    steps = None
+    epochs = 30
+    lr = None
+    warmup_steps = None
+    workers = 0
+    output = "runs/prediction"
+    resume = None
+    save_every = 1000
+    log_every = 100
+    device = "auto"
+    amp = True
+    progress = True
+    history_lag_minutes = 0
 
 
-@dataclass
-class PredictionInferenceConfig:
-    checkpoint: str = "runs/prediction/latest.pt"
-    manifest: str = "data/forecast/test.csv"
-    output: str = "runs/prediction/forecasts"
-    origin_time: str | None = None
-    max_origins: int = 1
-    device: str = "auto"
-    weights: str = "ema"
-    progress: bool = True
-    seed: int = 42
-    samples: int = 1
+class PredictionInferenceConfig(Config):
+    checkpoint = "runs/prediction/latest.pt"
+    manifest = "data/forecast/test.csv"
+    output = "runs/prediction/forecasts"
+    origin_time = None
+    max_origins = 1
+    device = "auto"
+    weights = "ema"
+    progress = True
+    samples = 1
