@@ -9,13 +9,13 @@ from torch.nn import functional as F
 def init_module(module: nn.Module, scale: float = 1.0) -> nn.Module:
     out_ch, in_ch, *kernel = module.weight.shape
     kernel_size = math.prod(kernel)
-    fan_in = in_ch * kernel_size
-    fan_out = out_ch * kernel_size
-    # Average input and output connections
-    fan_avg = (fan_in + fan_out) / 2
+    input_connections = in_ch * kernel_size
+    output_connections = out_ch * kernel_size
+    # Average connections for weight initialization
+    avg_connections = (input_connections + output_connections) / 2
     if scale == 0:
         scale = 1e-10
-    bound = math.sqrt(3 * scale / fan_avg)
+    bound = math.sqrt(3 * scale / avg_connections)
     nn.init.uniform_(module.weight, -bound, bound)
     if module.bias is not None:
         nn.init.zeros_(module.bias)
@@ -57,13 +57,17 @@ class ResBlock(nn.Module):
         self.norm2 = norm(out_ch)
         self.dropout = nn.Dropout(dropout)
         self.conv2 = conv(out_ch, out_ch, scale=0.0)
-        self.shortcut = conv(in_ch, out_ch, kernel=1) if in_ch != out_ch else nn.Identity()
+        self.shortcut = linear(in_ch, out_ch) if in_ch != out_ch else nn.Identity()
 
     def forward(self, x: torch.Tensor, temb: torch.Tensor) -> torch.Tensor:
         h = self.conv1(F.silu(self.norm1(x)))
         h = h + self.emb_proj(F.silu(temb))[:, :, None, None]
         h = self.conv2(self.dropout(F.silu(self.norm2(h))))
-        return self.shortcut(x) + h
+        if isinstance(self.shortcut, nn.Identity):
+            shortcut = self.shortcut(x)
+        else:
+            shortcut = self.shortcut(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+        return shortcut + h
 
 
 class AttnBlock(nn.Module):
