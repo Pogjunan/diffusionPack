@@ -1,12 +1,11 @@
-"""Equation, conditioning and CPU wiring checks; no forecast-quality claim."""
 import pytest
 import torch
 from torch import nn
 
 from diffusionpack import diffusion as baseline
-from diffusionpack.backbone.scrd_unet import SCRDUNet, TCU
+from diffusionpack.scrd import SCRDUNet, TCU
 from diffusionpack.scrd import ForecastDiffusion, make_diffusion
-from diffusionpack.scrd_config import SCRDConfig
+from diffusionpack.scrd.config import SCRDConfig
 
 
 def test_schedule_and_forward_match_ddpm_1000():
@@ -61,7 +60,6 @@ def test_last_step_has_no_noise_or_residual_clipping():
 @pytest.mark.parametrize("target", ["future", "residual"])
 def test_multichannel_future_order_and_last_frame(target):
     engine = ForecastDiffusion(nn.Identity(), future_steps=3, map_channels=2, target=target)
-    # Three history frames, two variables per frame: [t0/c0,t0/c1,...].
     condition = torch.tensor([1., 2., 3., 4., 5., 6.]).reshape(1, 6, 1, 1)
     future = torch.tensor([10., 20., 30., 40., 50., 60.]).reshape(1, 6, 1, 1)
     expected_last = torch.tensor([5., 6., 5., 6., 5., 6.]).reshape(1, 6, 1, 1)
@@ -173,7 +171,6 @@ def test_sampling_uses_fixed_gamma_or_normalized_discrete_time(conditioning, tim
 
     engine = ForecastDiffusion(Probe(), future_steps=1, steps=4, target="future",
                                noise_conditioning=conditioning, time_input=time_input)
-    # This short schedule checks call semantics only, not generation quality.
     output = engine.sample(torch.zeros(1, 3, 2, 2), generator=torch.Generator().manual_seed(2))
     expected = engine.alpha_bars.flip(0).float() if conditioning == "gamma" else torch.tensor([1., .75, .5, .25])
     torch.testing.assert_close(torch.cat(seen), expected, atol=0, rtol=0)

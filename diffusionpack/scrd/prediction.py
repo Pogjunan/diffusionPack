@@ -12,7 +12,6 @@ def scrd_prediction_loss(model, future, history):
     def denoiser(noisy, t):
         return model(noisy, t, history)
 
-    # Reuse the existing integer-time DDPM loss, including q_sample and epsilon MSE.
     return diffusion.ddpm_loss(denoiser, residual)
 
 
@@ -28,7 +27,6 @@ def scrd_prediction_sample(model, history, *, progress=False):
         def denoiser(noisy, t):
             return model(noisy, t, history, condition_features)
 
-        # Use the same p_sample loop and beta variance as diffusionPack's DDPM core.
         residual = p_sample_loop(denoiser, state, clip_denoised=False, progress=progress)
         future = residual + last
         if not torch.isfinite(future).all():

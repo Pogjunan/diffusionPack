@@ -69,7 +69,6 @@ def infer_prediction(config):
                 grid = inverse_scale(predicted[0].float().cpu(), source.value_min, source.value_max)
                 if not torch.isfinite(grid).all():
                     raise ValueError(f"Non-finite forecast for {origin}, sample {sample}")
-                # Split the joint forecast into F maps, keeping the same sample index.
                 for k, (frame, valid) in enumerate(zip(grid.split(settings["map_channels"]), valid_times, strict=True)):
                     lead = training["lead_minutes"] + k * training["cadence_minutes"]
                     filename = f"forecast_{stamp}_{lead}min_sample_{sample:03d}.npy"

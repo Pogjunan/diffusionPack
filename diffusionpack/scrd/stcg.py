@@ -29,7 +29,6 @@ class TCU(nn.Module):
         self.pool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Linear(channels, channels)
 
-        # Inherited initialization; the paper does not specify gate initialization.
         nn.init.xavier_uniform_(self.conv1x1.weight, gain=0.1)
         nn.init.ones_(self.conv1x1.bias)
         nn.init.xavier_uniform_(self.fc.weight, gain=0.1)

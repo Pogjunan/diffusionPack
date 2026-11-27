@@ -16,7 +16,6 @@ def test_resolution_levels(resolution, levels):
 @pytest.mark.parametrize("resolution", [32, 128, 512, 1024])
 @pytest.mark.parametrize("kind", ["generation", "restoration", "prediction"])
 def test_model_shapes(resolution, kind):
-    # Meta tensors validate high-resolution shapes without allocating activations.
     with torch.device("meta"):
         if kind == "generation":
             model = DDPMUNet(resolution=resolution, base_channels=32, num_res_blocks=1)

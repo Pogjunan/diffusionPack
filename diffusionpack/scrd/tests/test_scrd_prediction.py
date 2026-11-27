@@ -1,4 +1,3 @@
-"""The SCRD module must use the existing Prediction and DDPM code paths."""
 from copy import deepcopy
 import importlib
 
@@ -10,11 +9,11 @@ from torch import nn
 
 from diffusionpack import diffusion
 from diffusionpack.backbone.prediction_unet import PredictionUNet
-from diffusionpack.backbone.scrd_unet import SCRDUNet
+from diffusionpack.scrd.unet import SCRDUNet
 from diffusionpack.main.prediction_data import ForecastDataset
 from diffusionpack.main.train import load_checkpoint
 from diffusionpack.main.train_prediction import train_prediction
-from diffusionpack.prediction import scrd_prediction_loss, scrd_prediction_sample
+from diffusionpack.scrd.prediction import scrd_prediction_loss, scrd_prediction_sample
 from diffusionpack.prediction_config import PredictionInferenceConfig, PredictionTrainConfig
 
 inference = importlib.import_module("diffusionpack.main.inference_prediction")
@@ -142,7 +141,7 @@ def test_scrd_sample_uses_all_core_steps_with_one_condition_cache(monkeypatch):
     torch.testing.assert_close(result, expected, atol=5e-6, rtol=5e-6)
     assert core_steps == model.times == list(range(999, -1, -1))
     assert model.cache_calls == 1 and model.training
-    assert result.max() > 1  # Valid residuals and final maps must not be clipped.
+    assert result.max() > 1
 
 
 def test_prediction_scrd_train_functional_resume_and_both_weight_routes(small_scrd_run, tmp_path, monkeypatch):
@@ -172,7 +171,7 @@ def test_prediction_scrd_train_functional_resume_and_both_weight_routes(small_sc
             epsilon = model(torch.zeros_like(last), torch.zeros(len(last), dtype=torch.long), history)
             assert epsilon.shape == last.shape and torch.isfinite(epsilon).all()
             seen.append(True)
-            return last  # This test checks routing/I/O; the oracle test checks sampling.
+            return last
 
         monkeypatch.setattr(inference, "scrd_prediction_sample", route)
         output = tmp_path / weights

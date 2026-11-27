@@ -4,42 +4,18 @@ from diffusionpack.main.inference_prediction import infer_prediction
 from diffusionpack.main.check_prediction import check_prediction
 
 
-mode = "check"  # Check data and one training batch before a full run.
+mode = "check"
 
-train_config = PredictionTrainConfig(
-    backbone="scrd",  # "ddpm" selects the existing gamma + AdaGN Prediction model.
-    history_steps=5,
-    future_steps=4,
-    resolution=512,
-    csv_path="data/forecast/train.csv",
-    target_csv=None,  # Set this when csv_path contains the shared frame collection.
-    value_min=None,
-    value_max=None,
-    units=None,
-    steps=250000,
-    epochs=None,
-    lr=0.0002,
-    warmup_steps=0,
-    amp=False,
-    output="runs/prediction_scrd",
-)
-inference_config = PredictionInferenceConfig(
-    checkpoint="runs/prediction_scrd/latest.pt",
-    csv_path="data/forecast/test.csv",
-    target_csv=None,
-    output="runs/prediction_scrd/forecasts",
-    weights="model",
-    samples=8,
-)
+train_config = PredictionTrainConfig()
+inference_config = PredictionInferenceConfig()
 
 
-# Optional split CSVs for a complete chronological leakage check.
 valid_csv = None
 valid_targets = None
 test_csv = None
 test_targets = None
 check_batch_size = 1
-check_all = False  # True checks every used training/validation grid once.
+check_all = False
 
 
 if __name__ == "__main__":

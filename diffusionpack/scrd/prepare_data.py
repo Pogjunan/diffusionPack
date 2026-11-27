@@ -1,4 +1,3 @@
-"""Convert the old file lists to CSV without changing their target membership."""
 import argparse
 from pathlib import Path
 
@@ -48,7 +47,7 @@ def prepare(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description="Prepare forecast CSV files")
     for name in ("data-dir", "train-txt", "valid-txt", "test-txt", "output", "time-offset"):
         parser.add_argument(f"--{name}", required=True)
     parser.add_argument("--available-delay-minutes", type=int, required=True)

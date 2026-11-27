@@ -52,9 +52,6 @@ def reverse_mean(x_t, t, eps_pred):
     return (x_t - eps_scale * eps_pred) / step_value(alphas.sqrt(), t, x_t)
 
 
-# p_theta(x_prev | x_t) = N(mu_theta(x_t, t), beta_t I), for t > 0.
-# mu_theta = posterior_mean(predict_x0(x_t, t, eps_pred), x_t, t), optionally clipped.
-# Sample x_prev = mu_theta + sqrt(beta_t) * z, z ~ N(0, I); at t = 0 return mu_theta.
 @torch.no_grad()
 def p_sample(model, x_t, t, noise=None, *, clip_denoised=False):
     t = t.to(device=x_t.device)

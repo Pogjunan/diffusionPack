@@ -8,7 +8,6 @@ from ..diffusion import check_shape, step_value
 
 
 class ConditionalDDPM(DDPMUNet):
-    """The existing DDPM U-Net, with history concatenation and integer time."""
 
     def __init__(self, history_steps, future_steps, map_channels, **settings):
         super().__init__(in_channels=(history_steps + future_steps) * map_channels, **settings)
@@ -45,7 +44,6 @@ def make_model(config):
 
 
 class ForecastDiffusion(nn.Module):
-    """DDPM equations shared by direct, residual and SCRD comparisons."""
 
     def __init__(self, model, *, future_steps=4, map_channels=1, steps=1000,
                  beta_start=0.0001, beta_end=0.02, target="residual",
@@ -108,7 +106,7 @@ class ForecastDiffusion(nn.Module):
         gamma = step_value(self.alpha_bars, t, clean)
         if self.noise_conditioning == "gamma":
             high = step_value(self.alpha_bars_prev, t, clean)
-            gamma = torch.lerp(gamma, high, torch.rand_like(gamma))  # Linear interpolation.
+            gamma = torch.lerp(gamma, high, torch.rand_like(gamma))
             noisy = gamma.sqrt() * clean + (1 - gamma).sqrt() * noise
         else:
             noisy = self.q_sample(clean, t, noise)
@@ -124,7 +122,6 @@ class ForecastDiffusion(nn.Module):
         check_shape(noisy, predicted)
         weight = step_value(self.betas / (1 - self.alpha_bars).sqrt(), t, noisy)
         mean = (noisy - weight * predicted) / step_value(self.alphas.sqrt(), t, noisy)
-        # At t=0, use x0 directly to avoid cancellation in the equivalent mean formula.
         last = (t == 0).reshape(-1, 1, 1, 1)
         mean = torch.where(last, self.predict_x0(noisy, t, predicted), mean)
         variance = self.betas if self.reverse_variance == "beta" else self.posterior_var

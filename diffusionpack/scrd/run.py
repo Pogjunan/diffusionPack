@@ -1,12 +1,12 @@
 import argparse
 from pathlib import Path
 
-from diffusionpack.main.scrd_runner import diagnose, infer, train
-from diffusionpack.scrd_config import SCRDConfig
+from diffusionpack.scrd.runner import diagnose, infer, train
+from diffusionpack.scrd.config import SCRDConfig
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SCRD and matched DDPM comparisons; edit scrd_config.py")
+    parser = argparse.ArgumentParser(description="SCRD and matched DDPM comparisons; edit scrd/config.py")
     parser.add_argument("action", choices=("check-data", "train", "infer", "evaluate", "persistence", "diagnose"))
     parser.add_argument("--backbone", choices=("ddpm", "scrd"))
     parser.add_argument("--target", choices=("future", "residual"))

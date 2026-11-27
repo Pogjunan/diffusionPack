@@ -6,10 +6,10 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Subset
 
-from ..scrd.comparison import make_diffusion
-from ..scrd_config import SCRDConfig
-from .prediction_data import ForecastDataset, inverse_scale
-from .train import choose_device
+from .comparison import make_diffusion
+from .config import SCRDConfig
+from ..main.prediction_data import ForecastDataset, inverse_scale
+from ..main.train import choose_device
 
 
 def dataset(config, split, require_target=True):
@@ -90,7 +90,7 @@ def forecast(config, diffusion, source, *, count, members, output=None, persiste
             if not torch.isfinite(physical).all():
                 raise FloatingPointError(f"Non-finite physical forecast at {origin}")
             predictions.append(physical.reshape(config.future_steps, config.map_channels, *physical.shape[-2:]))
-        predictions = torch.stack(predictions)  # [members, future, channels, height, width]
+        predictions = torch.stack(predictions)
         point = predictions.mean(0)
         stamp = origin.replace(":", "").replace("+0000", "Z")
         if output is not None:
@@ -188,7 +188,6 @@ def train(config, check_data=False):
     print(f"Device={device}; parameters={sum(p.numel() for p in diffusion.parameters()):,}; "
           f"alpha_bar_T={diffusion.alpha_bars[-1].item():.8g}; updates={step}->{config.steps}")
     while step < config.steps:
-        # A deterministic epoch order and cursor allow resuming in the middle of an epoch.
         order = torch.randperm(len(train_set), generator=torch.Generator().manual_seed(config.seed + epoch)).tolist()
         loader = DataLoader(Subset(train_set, order[cursor:]), batch_size=config.batch_size,
                             num_workers=config.workers, shuffle=False, pin_memory=device.type == "cuda",
@@ -246,7 +245,6 @@ def infer(config, *, evaluate=False, persistence=False):
         return forecast(config, None, source, count=config.max_origins, members=1,
                         output=config.output, persistence=True)
     trained, diffusion, saved = load_run(config.checkpoint, device)
-    # Architecture, scale and cadence come from the checkpoint, never current defaults.
     for key in ("test_csv", "test_targets", "samples", "max_origins", "origin_time", "seed", "progress", "output", "checkpoint"):
         setattr(trained, key, getattr(config, key))
     source = dataset(trained, "test", require_target=evaluate)

@@ -89,7 +89,6 @@ def train_step(model, x_0, optimizer, scheduler=None, ema_model=None, *, grad_cl
         return loss.detach()
 
     if ema_model is not None:
-        # EMA ← d·EMA + (1−d)·θ
         with torch.no_grad():
             for average, weight in zip(ema_model.parameters(), model.parameters(), strict=True):
                 average.lerp_(weight, 1 - ema_decay)

@@ -114,7 +114,6 @@ def write_csv(folder, indices, *, late_index=None, channels=2):
         moment = start + timedelta(minutes=30 * i)
         available = moment + timedelta(minutes=45 if i == late_index else 5)
         name = f'{i}.npy'
-        # Values identify both the frame and the channel.
         grid = np.stack([np.full((8, 8), 10 * i + c, dtype=np.float32) for c in range(channels)])
         np.save(folder / name, grid)
         rows.append([moment.isoformat(), name, available.isoformat()])
@@ -192,7 +191,6 @@ def test_invalid_csv(tmp_path, problem, message):
 
 @pytest.fixture
 def short_schedule(monkeypatch):
-    # Four steps test code paths, not image or forecast quality.
     betas = torch.linspace(0.0001, 0.02, 4, dtype=torch.float64)
     alphas = 1 - betas
     bars = alphas.cumprod(0)

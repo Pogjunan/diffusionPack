@@ -30,7 +30,6 @@ class SWCrossAttention(nn.Module):
         valid = self.partition(torch.roll(valid, (-shift, -shift), (-2, -1))).squeeze(-1)
         allowed = valid[:, :, None] & valid[:, None, :]
 
-        # Prevent cyclic shifts from connecting opposite image edges.
         if shift:
             regions = torch.zeros(1, 1, padded_height, padded_width, device=device)
             slices = (slice(0, -self.window), slice(-self.window, -shift), slice(-shift, None))
@@ -51,7 +50,6 @@ class SWCrossAttention(nn.Module):
         padded_height, padded_width = noise.shape[-2:]
         shift = self.shift if min(height, width) > self.window else 0
 
-        # Eq. (6): Q and V use noisy features; K uses STCG features.
         query = self.partition(torch.roll(self.query(noise), (-shift, -shift), (-2, -1)))
         key = self.partition(torch.roll(self.key(condition), (-shift, -shift), (-2, -1)))
         value = self.partition(torch.roll(self.value(noise), (-shift, -shift), (-2, -1)))

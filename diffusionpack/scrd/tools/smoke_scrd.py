@@ -1,4 +1,3 @@
-"""Small synthetic CPU run, with the real four-scale SCRD and all 1000 DDPM steps."""
 import argparse
 import json
 from pathlib import Path
@@ -8,8 +7,8 @@ import numpy as np
 import pandas as pd
 import torch
 
-from diffusionpack.main.scrd_runner import diagnose, infer, train
-from diffusionpack.scrd_config import SCRDConfig
+from diffusionpack.scrd.runner import diagnose, infer, train
+from diffusionpack.scrd.config import SCRDConfig
 
 
 def main(output):
@@ -41,7 +40,6 @@ def main(output):
     config.output = str(output / "diagnose")
     diagnosis = diagnose(config)
 
-    # Only five history files are visible to inference. No future truth is required.
     history = pd.read_csv(data / "test.csv").iloc[:5]
     history.to_csv(data / "history_only.csv", index=False)
     config.test_csv = str(data / "history_only.csv")
@@ -65,6 +63,6 @@ def main(output):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description="Prepare forecast CSV files")
     parser.add_argument("--output", default="runs/scrd_smoke")
     main(parser.parse_args().output)

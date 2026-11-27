@@ -15,7 +15,6 @@ def timestep_embedding(timesteps, dim):
 class ResBlock(nn.Module):
     def __init__(self, in_ch, out_ch, temb_ch, dropout, use_adagn=False):
         super().__init__()
-        # 32 channel groups
         self.norm1 = nn.GroupNorm(32, in_ch, eps=1e-6)
         self.conv1 = nn.Conv2d(in_ch, out_ch, 3, padding=1)
         self.use_adagn = use_adagn
@@ -23,7 +22,6 @@ class ResBlock(nn.Module):
         self.norm2 = nn.GroupNorm(32, out_ch, eps=1e-6)
         self.dropout = nn.Dropout(dropout)
         self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1)
-        # Channel projection
         self.shortcut = nn.Linear(in_ch, out_ch) if in_ch != out_ch else nn.Identity()
 
     def forward(self, x, temb):
@@ -31,12 +29,12 @@ class ResBlock(nn.Module):
         emb = self.emb_proj(F.silu(temb))[:, :, None, None]
         if self.use_adagn:
             scale, shift = emb.chunk(2, dim=1)
-            h = self.norm2(h) * (1 + scale) + shift  # AdaGN
+            h = self.norm2(h) * (1 + scale) + shift
         else:
             h = self.norm2(h + emb)
         residual = self.conv2(self.dropout(F.silu(h)))
         x = self.shortcut(x.movedim(1, -1)).movedim(-1, 1)
-        return x + residual  # S(x) + R(x, t)
+        return x + residual
 
 
 class AttnBlock(nn.Module):
@@ -54,7 +52,6 @@ class AttnBlock(nn.Module):
         q = self.q(h).flatten(2).transpose(1, 2)
         k = self.k(h).flatten(2)
         v = self.v(h).flatten(2).transpose(1, 2)
-        # softmax(QK^T / sqrt(C)) V
         weights = torch.softmax(torch.bmm(q, k) * (channels ** -0.5), dim=-1)
         out = torch.bmm(weights, v).transpose(1, 2).reshape_as(x)
         return x + self.proj_out(out)
@@ -155,7 +152,6 @@ class DDPMUNet(nn.Module):
     def forward(self, x, t):
         if x.shape[1:] != (self.in_channels, self.resolution, self.resolution):
             raise ValueError('Image channels and resolution must match the U-Net configuration')
-        # The conditional models pass gamma instead of integer t.
         if t.shape != (x.shape[0],):
             raise ValueError('Expected one noise level per sample')
         if self.use_adagn and not t.is_floating_point():

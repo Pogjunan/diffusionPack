@@ -5,7 +5,6 @@ import pandas as pd
 import pytest
 import torch
 
-from diffusionpack.backbone.scrd_unet import SCRDUNet as OldImport
 from diffusionpack.main.check_prediction import check_prediction
 from diffusionpack.main.train_prediction import train_prediction
 from diffusionpack.prediction_config import PredictionTrainConfig
@@ -14,7 +13,6 @@ from diffusionpack.scrd import SCRDUNet, STCG, TCU, SWCIBlock, SWCrossAttention
 
 @pytest.mark.parametrize('height,width,shift', [(8, 8, 0), (8, 8, 2), (7, 11, 2), (3, 9, 2)])
 def test_swci_against_independent_spatial_windows(height, width, shift):
-    # Reference: use pixel coordinates directly, not partition/restore or masks.
     torch.manual_seed(5)
     model = SWCrossAttention(3, window=4, shift=shift).double()
     noise = torch.randn(2, 3, height, width, dtype=torch.float64)
@@ -30,7 +28,6 @@ def test_swci_against_independent_spatial_windows(height, width, shift):
     expected = logits.masked_fill(~allowed, float('-inf')).softmax(-1) @ v
     expected = model.proj_out(expected.transpose(1, 2).reshape_as(noise))
     torch.testing.assert_close(model(noise, cues), expected, atol=1e-12, rtol=1e-12)
-    # Negative controls: condition as V and unmasked attention are not Eq. (6).
     wrong_v = model.value(cues).flatten(2).transpose(1, 2)
     wrong = logits.masked_fill(~allowed, float('-inf')).softmax(-1) @ wrong_v
     wrong = model.proj_out(wrong.transpose(1, 2).reshape_as(noise))
@@ -58,7 +55,6 @@ def test_tcu_broadcast_gate_with_hand_computable_values():
 
 def test_module_imports_and_cached_features():
     torch.manual_seed(17)
-    assert OldImport is SCRDUNet
     model = SCRDUNet(history_steps=5, future_steps=4, resolution=16)
     assert isinstance(model.stcg, STCG)
     assert isinstance(model.unet.down_blocks[0], SWCIBlock)

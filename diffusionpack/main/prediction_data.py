@@ -26,7 +26,6 @@ class ForecastDataset(Dataset):
         if df.empty or not all(column in df.columns for column in columns):
             raise ValueError("CSV needs timestamp, path and available_at columns with data")
 
-        # ISO 8601 timestamps without an offset are treated as UTC.
         df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True, format="ISO8601")
         df["available_at"] = pd.to_datetime(df["available_at"], utc=True, format="ISO8601")
         if df[columns].isna().any().any():
@@ -110,7 +109,6 @@ class ForecastDataset(Dataset):
 
     def __getitem__(self, index):
         origin, history, targets = self.windows[index]
-        # History: (H*C, height, width); future: (F*C, height, width).
         condition = torch.cat([self.load_grid(moment) for moment in history], dim=0)
         if self.require_target:
             future = torch.cat([self.load_grid(moment) for moment in targets], dim=0)

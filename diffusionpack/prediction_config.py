@@ -29,8 +29,8 @@ class PredictionTrainConfig(Config):
     history_lag_minutes = 0
     base_channels = None
     future_steps = 1
-    backbone = "ddpm"  # ddpm: existing gamma model; scrd: residual + STCG/SWCI.
-    target_csv = None  # Optional timestamp list restricting this split's targets.
+    backbone = "ddpm"
+    target_csv = None
     scrd_widths = (32, 64, 128, 256)
     scrd_window = 8
     scrd_tcu_depth = 3

@@ -16,7 +16,7 @@ Implementations are developed with reference to original research papers and pub
 | Restoration | Degraded image | Clean image |
 | Prediction | Past spatial maps | One or more future maps |
 
-Choose `model = "original"` for the CIFAR-10 U-Net defaults or `model = "light"` for a smaller U-Net. All tasks use the same 1,000-step DDPM reverse schedule. Unconditional generation keeps integer timestep conditioning. Restoration and the DDPM Prediction backbone use continuous gamma conditioning during training and AdaGN in the residual blocks. SCRD uses integer timesteps and its own STCG/SWCI architecture.
+Choose `model = "original"` for the CIFAR-10 U-Net defaults or `model = "light"` for a smaller U-Net. All tasks use the same 1,000-step DDPM reverse schedule. Unconditional generation keeps integer timestep conditioning. Restoration and Prediction use continuous gamma conditioning during training and AdaGN in the residual blocks.
 
 In [run.py](run.py), set `task` to `"unconditional"`, `"restore"` or `"prediction"` and `action` to `"train"` or `"inference"`. Run `python run.py`.
 
@@ -94,17 +94,3 @@ Run `python run_prediction.py` first with `mode = "check"`, then with `mode = "t
 Gamma is sampled between `alpha_bars[t]` and `alpha_bars_prev[t]` during training. The same gamma is used to create the noisy target and as the input to the existing sinusoidal embedding. During sampling, the model receives the fixed `alpha_bars[t]` at each discrete DDPM step. The schedule and reverse equations are unchanged. This is not a full SR3, Palette or MCVD reproduction.
 
 The new conditional models need new checkpoints because the noise-level input and AdaGN projection sizes differ from the previous implementation. Unconditional checkpoint shapes are unchanged. The training/inference schedules are not independently configurable yet. Run `python -m pytest -q` for structural and CPU integration tests; actual forecast accuracy and GPU training require separate experiments.
-
-## SCRD comparison
-
-SCRD is also selectable in the existing Prediction training and inference path.
-See [PREDICTION_SCRD.md](PREDICTION_SCRD.md) for the integrated path and its settings.
-The `run_prediction.py` example now selects SCRD; `PredictionTrainConfig()` still
-defaults to the existing gamma-conditioned DDPM backbone.
-
-The SCRD modules live in `diffusionpack/scrd/` (`stcg.py`, `swci.py`, `unet.py`, `prediction.py`). The common Prediction path calls the original DDPM loss and sampler. `comparison.py` is a separate configurable diagnostic engine. See [SCRD_MODULAR_REVIEW.md](SCRD_MODULAR_REVIEW.md) for the latest checks.
-
-For the SCRD modules, matched DDPM controls, and training/inference commands,
-see [SCRD_README.md](SCRD_README.md). The paper-to-code review is in
-[SCRD_REVIEW.md](SCRD_REVIEW.md). Existing unconditional, Restore, and Prediction
-model implementations are preserved.

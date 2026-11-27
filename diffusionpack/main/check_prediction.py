@@ -11,7 +11,6 @@ from .train_prediction import prediction_dataset, prediction_settings
 
 def check_prediction(config, valid_csv=None, valid_targets=None, test_csv=None,
                      test_targets=None, batch_size=1, check_all=False):
-    # Read-only preflight. No optimizer update or checkpoint is written.
     if not config.units:
         raise ValueError("Set the physical units in the prediction config")
     if type(batch_size) is not int or batch_size < 1:
@@ -46,7 +45,6 @@ def check_prediction(config, valid_csv=None, valid_targets=None, test_csv=None,
         print("Split audit is partial: provide the missing validation/test CSVs for all checks.")
 
     if check_all:
-        # Check each used training/validation grid once; never load test labels here.
         for name in ("train", "valid"):
             if name in splits:
                 for moment in sorted(histories[name] | targets[name]):
@@ -56,7 +54,6 @@ def check_prediction(config, valid_csv=None, valid_targets=None, test_csv=None,
     settings = prediction_settings(config)
     model = (SCRDUNet(**settings) if config.backbone == "scrd" else PredictionUNet(**settings)).to(device)
     loss_function = scrd_prediction_loss if config.backbone == "scrd" else prediction_loss
-    # Inspect a bounded batch of actual training windows, not validation/test data.
     batch = [train[index] for index in range(min(batch_size, len(train)))]
     history = torch.stack([item[0] for item in batch]).to(device)
     future = torch.stack([item[1] for item in batch]).to(device)

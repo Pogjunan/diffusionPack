@@ -1,4 +1,3 @@
-"""Check the legacy-list bridge using temporary synthetic files only."""
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -6,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from prepare_scrd_data import prepare
+from diffusionpack.scrd.prepare_data import prepare
 
 
 @pytest.fixture

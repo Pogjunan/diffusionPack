@@ -1,12 +1,11 @@
-"""Small CPU integration checks, using synthetic maps and explicit sampling stubs."""
 import numpy as np
 import pandas as pd
 import pytest
 import torch
 
-from diffusionpack.main import scrd_runner as runner
+from diffusionpack.scrd import runner
 from diffusionpack.scrd import ForecastDiffusion
-from diffusionpack.scrd_config import SCRDConfig
+from diffusionpack.scrd.config import SCRDConfig
 
 
 def write_maps(folder, start, count=8):
@@ -73,7 +72,6 @@ def test_resume_exactly_matches_three_uninterrupted_updates(tmp_path):
     for key in ("model", "optimizer", "rng", "step", "epoch", "cursor", "best", "train_origins"):
         assert_same_state(full[key], resumed[key])
     assert full["step"] == 3 and full["epoch"] == 1 and full["cursor"] == 0
-    # The final batch contains one origin; resuming must neither skip nor repeat it.
     pd.testing.assert_frame_equal(pd.read_csv(tmp_path / "full/loss.csv"),
                                   pd.read_csv(tmp_path / "split/loss.csv"), check_exact=True)
     assert full["config"]["diffusion_steps"] == 1000
@@ -100,7 +98,6 @@ def test_inference_needs_history_only_and_keeps_checkpoint_units(small_run, tmp_
 
     monkeypatch.setattr(ForecastDiffusion, "sample", fixed_forecast)
     output = tmp_path / "predictions"
-    # Inference architecture/scaling/units are loaded from the checkpoint.
     config = SCRDConfig(checkpoint=str(checkpoint), test_csv=csv_path, output=str(output),
                         origin_time="2026-03-01T00:30:00Z", samples=2, max_origins=1,
                         device="cpu", cpu_threads=1, progress=False)
@@ -140,7 +137,7 @@ def test_persistence_evaluation_matches_known_errors_without_checkpoint(tmp_path
 def test_ensemble_mean_and_individual_sample_errors_are_distinct(small_run, tmp_path, monkeypatch):
     _, checkpoint = small_run
     csv_path = write_maps(tmp_path / "test", "2026-03-01T00:00:00Z", count=4)
-    offsets = iter([0., 0.4])  # Physical offsets 0 and .2: ensemble mean offset .1.
+    offsets = iter([0., 0.4])
 
     def two_members(self, condition, **kwargs):
         return self.last_frame(condition) + next(offsets)

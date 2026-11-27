@@ -66,7 +66,6 @@ class SWCIUNet(nn.Module):
 
 
 class SCRDUNet(nn.Module):
-    """STCG + SWCI, with history and future frames stacked along channels."""
 
     def __init__(self, map_channels=1, history_steps=5, future_steps=4,
                  widths=(32, 64, 128, 256), window=8, tcu_depth=3, time_dim=128,
@@ -93,8 +92,6 @@ class SCRDUNet(nn.Module):
         self.target_channels = future_steps * map_channels
         self.widths = widths
         self.use_tcu = use_tcu
-        # TCU ablation: keep the spatial encoder and output conv.
-        # This is not a verified reproduction of the paper's entire STCG removal.
         self.stcg = STCG(self.condition_channels, widths, tcu_depth if use_tcu else 0)
         self.unet = SWCIUNet(self.condition_channels, self.target_channels, widths,
                             time_dim, window, norm_groups, output_norm_groups)

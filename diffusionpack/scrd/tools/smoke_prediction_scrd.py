@@ -1,4 +1,3 @@
-"""Exercise SCRD through the existing Prediction trainer and DDPM sampler."""
 import argparse
 import json
 from pathlib import Path
@@ -64,6 +63,6 @@ def main(output):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description="Prepare forecast CSV files")
     parser.add_argument("--output", default="runs/prediction_scrd_smoke")
     main(parser.parse_args().output)
