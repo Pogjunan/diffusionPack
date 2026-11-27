@@ -61,3 +61,13 @@ model = DDPMUNet(
 ```
 
 Keep data tensors on the same device as the model. A full 512×512 training run needs GPU memory validation.
+
+## Tests
+
+Run the checks from the repository root:
+
+```bash
+python -m unittest discover -s test -v
+```
+
+CUDA checks are skipped when no CUDA device is available. The 256×256 and 512×512 architecture checks use PyTorch's meta device and do not establish actual GPU memory requirements or generation quality.
