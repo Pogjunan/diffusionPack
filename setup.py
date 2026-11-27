@@ -5,5 +5,5 @@ setup(
     version="0.0.1",
     packages=find_packages(),
     python_requires=">=3.10",
-    install_requires=["torch>=2.0", "numpy>=1.22"],
+    install_requires=["torch>=2.3", "torchvision>=0.18", "numpy>=1.22"],
 )
