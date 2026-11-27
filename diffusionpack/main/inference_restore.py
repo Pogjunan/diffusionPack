@@ -21,6 +21,8 @@ def infer_restore(config):
     training = saved.get("training", {})
     if training.get("task") != "restore":
         raise ValueError("Choose a restoration checkpoint")
+    if training.get("noise_conditioning") != "gamma_adagn":
+        raise ValueError("Retrain old conditional checkpoints for gamma conditioning and AdaGN")
     settings = saved["model_config"]
     model = RestoreUNet(**settings).to(device)
     model.load_state_dict(saved[config.weights])

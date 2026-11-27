@@ -45,9 +45,9 @@ def manifest_hash(path):
 class ForecastDataset(Dataset):
     def __init__(self, manifest, *, history_steps=5, map_channels=1, resolution=32,
                  cadence_minutes=30, lead_minutes=30, value_min=None, value_max=None,
-                 require_target=True, origin_time=None, history_lag_minutes=0):
-        if history_steps < 1 or map_channels < 1 or resolution < 1:
-            raise ValueError("History, channels and resolution must be positive")
+                 require_target=True, origin_time=None, history_lag_minutes=0, future_steps=1):
+        if any(type(n) is not int or n < 1 for n in (history_steps, future_steps, map_channels, resolution)):
+            raise ValueError("History, future, channels and resolution must be positive integers")
         if cadence_minutes < 1 or lead_minutes < 1:
             raise ValueError("Cadence and lead must be strictly positive")
         if type(history_lag_minutes) is not int or history_lag_minutes < 0:
@@ -56,6 +56,7 @@ class ForecastDataset(Dataset):
             raise ValueError("Set finite physical value_min and value_max with max > min")
         self.records = read_manifest(manifest, check_files=require_target)
         self.history_steps = history_steps
+        self.future_steps = future_steps
         self.map_channels = map_channels
         self.resolution = resolution
         self.cadence = timedelta(minutes=cadence_minutes)
@@ -68,7 +69,7 @@ class ForecastDataset(Dataset):
         lag = timedelta(minutes=history_lag_minutes)
         history_ends = sorted(self.records) if origin_time is None else [parse_time(origin_time) - lag]
         history_times = self.records.keys()
-        if not require_target and origin_time is None:
+        if not require_target:
             history_times = {time for time, (path, _) in self.records.items() if path.is_file()}
         for history_end in history_ends:
             origin = history_end + lag
@@ -79,11 +80,11 @@ class ForecastDataset(Dataset):
             if any(self.records[moment][1] > origin for moment in history):
                 self.rejections["late_history"] += 1
                 continue
-            target = origin + self.lead
-            if require_target and target not in self.records:
+            targets = tuple(origin + self.lead + self.cadence * k for k in range(future_steps))
+            if require_target and any(moment not in self.records for moment in targets):
                 self.rejections["missing_target"] += 1
                 continue
-            self.windows.append((origin, history, target))
+            self.windows.append((origin, history, targets))
         if not self.windows:
             raise ValueError(f"No valid prediction windows; exclusions={self.rejections}")
 
@@ -108,13 +109,14 @@ class ForecastDataset(Dataset):
         return torch.from_numpy(scaled)
 
     def __getitem__(self, index):
-        origin, history, target = self.windows[index]
+        origin, history, targets = self.windows[index]
+        # History: (H*C, height, width); future: (F*C, height, width).
         condition = torch.cat([self.load_grid(moment) for moment in history], dim=0)
         if self.require_target:
-            future = self.load_grid(target)
+            future = torch.cat([self.load_grid(moment) for moment in targets], dim=0)
         else:
             future = torch.empty(0, dtype=condition.dtype)
-        return condition, future, origin.isoformat(), target.isoformat()
+        return condition, future, origin.isoformat(), tuple(moment.isoformat() for moment in targets)
 
 
 def inverse_scale(image, value_min, value_max):

@@ -10,6 +10,7 @@ def prediction_settings(config):
     del settings["in_channels"]
     settings.update(
         history_steps=config.history_steps,
+        future_steps=config.future_steps,
         map_channels=config.map_channels,
     )
     if config.channel_mult is not None:
@@ -28,6 +29,7 @@ def train_prediction(config):
     dataset = ForecastDataset(
         config.manifest,
         history_steps=config.history_steps,
+        future_steps=config.future_steps,
         map_channels=config.map_channels,
         resolution=config.resolution,
         cadence_minutes=config.cadence_minutes,
@@ -42,6 +44,7 @@ def train_prediction(config):
     settings = prediction_settings(config)
     current = dict(
         task="prediction",
+        noise_conditioning="gamma_adagn",
         manifest_sha256=manifest_hash(config.manifest),
         cadence_minutes=config.cadence_minutes,
         history_lag_minutes=config.history_lag_minutes,
@@ -51,5 +54,7 @@ def train_prediction(config):
         units=config.units,
     )
     checkpoint = load_checkpoint(config.resume) if config.resume else None
+    if checkpoint and checkpoint.get("training", {}).get("noise_conditioning") != "gamma_adagn":
+        raise ValueError("Retrain old conditional checkpoints for gamma conditioning and AdaGN")
     model = PredictionUNet(**settings).to(device)
     return train_batches(config, model, dataset, settings, "forecast", current, checkpoint, prediction_loss)

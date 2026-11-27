@@ -19,6 +19,8 @@ def infer_prediction(config):
     training = saved.get("training", {})
     if training.get("task") != "prediction":
         raise ValueError("Use a prediction checkpoint")
+    if training.get("noise_conditioning") != "gamma_adagn":
+        raise ValueError("Retrain old conditional checkpoints for gamma conditioning and AdaGN")
     settings = saved["model_config"]
     model = PredictionUNet(**settings).to(device)
     model.load_state_dict(saved[config.weights])
@@ -26,6 +28,7 @@ def infer_prediction(config):
     source = ForecastDataset(
         config.manifest,
         history_steps=settings["history_steps"],
+        future_steps=settings["future_steps"],
         map_channels=settings["map_channels"],
         resolution=settings["resolution"],
         cadence_minutes=training["cadence_minutes"],
@@ -44,7 +47,7 @@ def infer_prediction(config):
         staging = Path(temporary)
         run = output / staging.name.removeprefix(".")
         for index in selected:
-            history, _, origin, valid = source[index]
+            history, _, origin, valid_times = source[index]
             history = history.unsqueeze(0).to(device)
             stamp = origin.removesuffix("+00:00").replace(":", "") + "Z"
             for sample in range(1, config.samples + 1):
@@ -52,8 +55,11 @@ def infer_prediction(config):
                 grid = inverse_scale(predicted[0].float().cpu(), source.value_min, source.value_max)
                 if not torch.isfinite(grid).all():
                     raise ValueError(f"Non-finite forecast for {origin}, sample {sample}")
-                filename = f"forecast_{stamp}_{training['lead_minutes']}min_sample_{sample:03d}.npy"
-                np.save(staging / filename, grid.numpy())
-                records.append((origin, valid, str(Path(run.name) / filename), training["units"]))
+                # Split the joint forecast into F maps, keeping the same sample index.
+                for k, (frame, valid) in enumerate(zip(grid.split(settings["map_channels"]), valid_times, strict=True)):
+                    lead = training["lead_minutes"] + k * training["cadence_minutes"]
+                    filename = f"forecast_{stamp}_{lead}min_sample_{sample:03d}.npy"
+                    np.save(staging / filename, frame.numpy())
+                    records.append((origin, valid, str(Path(run.name) / filename), training["units"]))
         staging.rename(run)
     return records

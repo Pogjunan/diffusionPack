@@ -28,6 +28,7 @@ class PredictionTrainConfig(Config):
     progress = True
     history_lag_minutes = 0
     base_channels = None
+    future_steps = 1
 
 
 class PredictionInferenceConfig(Config):

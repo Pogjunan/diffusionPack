@@ -24,7 +24,9 @@ def train_restore(config):
         raise ValueError("Choose cifar10_jpeg or paired")
 
     saved = load_checkpoint(config.resume) if config.resume else None
-    training = {"task": "restore"}
+    if saved and saved.get("training", {}).get("noise_conditioning") != "gamma_adagn":
+        raise ValueError("Retrain old conditional checkpoints for gamma conditioning and AdaGN")
+    training = {"task": "restore", "noise_conditioning": "gamma_adagn"}
     if config.dataset == "cifar10_jpeg":
         training["jpeg_quality"] = config.jpeg_quality
     model = RestoreUNet(**settings).to(device)

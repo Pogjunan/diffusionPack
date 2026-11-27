@@ -13,12 +13,13 @@ def timestep_embedding(timesteps, dim):
 
 
 class ResBlock(nn.Module):
-    def __init__(self, in_ch, out_ch, temb_ch, dropout):
+    def __init__(self, in_ch, out_ch, temb_ch, dropout, use_adagn=False):
         super().__init__()
         # 32 channel groups
         self.norm1 = nn.GroupNorm(32, in_ch, eps=1e-6)
         self.conv1 = nn.Conv2d(in_ch, out_ch, 3, padding=1)
-        self.emb_proj = nn.Linear(temb_ch, out_ch)
+        self.use_adagn = use_adagn
+        self.emb_proj = nn.Linear(temb_ch, 2 * out_ch if use_adagn else out_ch)
         self.norm2 = nn.GroupNorm(32, out_ch, eps=1e-6)
         self.dropout = nn.Dropout(dropout)
         self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1)
@@ -27,8 +28,13 @@ class ResBlock(nn.Module):
 
     def forward(self, x, temb):
         h = self.conv1(F.silu(self.norm1(x)))
-        h = h + self.emb_proj(F.silu(temb))[:, :, None, None]
-        residual = self.conv2(self.dropout(F.silu(self.norm2(h))))
+        emb = self.emb_proj(F.silu(temb))[:, :, None, None]
+        if self.use_adagn:
+            scale, shift = emb.chunk(2, dim=1)
+            h = self.norm2(h) * (1 + scale) + shift  # AdaGN
+        else:
+            h = self.norm2(h + emb)
+        residual = self.conv2(self.dropout(F.silu(h)))
         x = self.shortcut(x.movedim(1, -1)).movedim(-1, 1)
         return x + residual  # S(x) + R(x, t)
 
@@ -86,13 +92,14 @@ class DDPMUNet(nn.Module):
 
     def __init__(self, resolution=32, in_channels=3, base_channels=128,
                  channel_mult=None, num_res_blocks=2,
-                 attention_resolutions=(16,), dropout=0.1):
+                 attention_resolutions=(16,), dropout=0.1, use_adagn=False):
         super().__init__()
         if not isinstance(resolution, int) or resolution < 8:
             raise ValueError("resolution must be an integer at least 8")
         if channel_mult is None:
             channel_mult = default_channel_mult(resolution)
         self.resolution = resolution
+        self.use_adagn = use_adagn
         self.in_channels = in_channels
         self.base_channels = base_channels
         self.channel_mult = tuple(channel_mult)
@@ -115,7 +122,7 @@ class DDPMUNet(nn.Module):
         for level, mult in enumerate(channel_mult):
             for _ in range(num_res_blocks):
                 out_ch = base_channels * mult
-                block = ResBlock(ch, out_ch, temb_dim, dropout)
+                block = ResBlock(ch, out_ch, temb_dim, dropout, use_adagn)
                 self.down.append(nn.ModuleDict({
                     'res': block,
                     'attn': AttnBlock(out_ch) if current_res in attention_resolutions else nn.Identity(),
@@ -126,16 +133,16 @@ class DDPMUNet(nn.Module):
                 self.down.append(nn.ModuleDict({'downsample': Downsample(ch)}))
                 current_res //= 2
                 skip_channels.append(ch)
-        self.mid1 = ResBlock(ch, ch, temb_dim, dropout)
+        self.mid1 = ResBlock(ch, ch, temb_dim, dropout, use_adagn)
         self.mid_attn = AttnBlock(ch)
-        self.mid2 = ResBlock(ch, ch, temb_dim, dropout)
+        self.mid2 = ResBlock(ch, ch, temb_dim, dropout, use_adagn)
         self.up = nn.ModuleList()
         for level in reversed(range(len(channel_mult))):
             target_ch = base_channels * channel_mult[level]
             for _ in range(num_res_blocks + 1):
                 skip_ch = skip_channels.pop()
                 self.up.append(nn.ModuleDict({
-                    'res': ResBlock(ch + skip_ch, target_ch, temb_dim, dropout),
+                    'res': ResBlock(ch + skip_ch, target_ch, temb_dim, dropout, use_adagn),
                     'attn': AttnBlock(target_ch) if current_res in attention_resolutions else nn.Identity(),
                 }))
                 ch = target_ch
@@ -148,8 +155,13 @@ class DDPMUNet(nn.Module):
     def forward(self, x, t):
         if x.shape[1:] != (self.in_channels, self.resolution, self.resolution):
             raise ValueError('Image channels and resolution must match the U-Net configuration')
-        if t.shape != (x.shape[0],) or t.dtype not in (torch.int32, torch.int64):
-            raise ValueError('t must be a length-B integer tensor')
+        # The conditional models pass gamma instead of integer t.
+        if t.shape != (x.shape[0],):
+            raise ValueError('Expected one noise level per sample')
+        if self.use_adagn and not t.is_floating_point():
+            raise ValueError('gamma must be a floating-point tensor')
+        if not self.use_adagn and t.dtype not in (torch.int32, torch.int64):
+            raise ValueError('t must be an integer tensor')
         t = t.to(device=x.device)
         temb = timestep_embedding(t, self.base_channels).to(self.time_dense0.weight.dtype)
         temb = self.time_dense1(F.silu(self.time_dense0(temb)))

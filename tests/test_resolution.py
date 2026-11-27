@@ -26,13 +26,13 @@ def test_model_shapes(resolution, kind):
         elif kind == "restoration":
             model = RestoreUNet(resolution=resolution, base_channels=32, num_res_blocks=1)
             result = model(torch.empty(2, 3, resolution, resolution, device="meta"),
-                           torch.zeros(2, dtype=torch.long, device="meta"),
+                           torch.full((2,), 0.5, device="meta"),
                            torch.empty(2, 3, resolution, resolution, device="meta"))
             channels = 3
         else:
             model = PredictionUNet(resolution=resolution, base_channels=32, num_res_blocks=1)
             result = model(torch.empty(2, 1, resolution, resolution, device="meta"),
-                           torch.zeros(2, dtype=torch.long, device="meta"),
+                           torch.full((2,), 0.5, device="meta"),
                            torch.empty(2, 5, resolution, resolution, device="meta"))
             channels = 1
     assert result.shape == (2, channels, resolution, resolution)
@@ -66,7 +66,7 @@ def test_unconditional_backward():
 def test_restore_backward():
     model = RestoreUNet(resolution=32, base_channels=32, num_res_blocks=1)
     x = torch.randn(2, 3, 32, 32)
-    y = model(x, torch.tensor([0, 999]), x)
+    y = model(x, torch.tensor([0.2, 0.8]), x)
     y.square().mean().backward()
     assert y.shape == x.shape
     assert model.conv_in.weight.grad is not None
@@ -75,7 +75,7 @@ def test_restore_backward():
 def test_prediction_backward():
     model = PredictionUNet(resolution=32, base_channels=32, num_res_blocks=1)
     x = torch.randn(2, 1, 32, 32)
-    y = model(x, torch.tensor([0, 999]), torch.randn(2, 5, 32, 32))
+    y = model(x, torch.tensor([0.2, 0.8]), torch.randn(2, 5, 32, 32))
     y.square().mean().backward()
     assert y.shape == x.shape
     assert model.conv_in.weight.grad is not None
