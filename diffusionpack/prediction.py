@@ -6,4 +6,4 @@ def prediction_loss(model, future, history):
 
 
 def prediction_sample(model, history, *, progress=False):
-    return restore_sample(model, history, progress=progress)
+    return restore_sample(model, history, clip_denoised=False, progress=progress)

@@ -1,5 +1,4 @@
 import torch
-from tqdm.auto import tqdm
 from .config import num_diff_steps, beta_start, beta_end
 
 betas = torch.linspace(beta_start, beta_end, num_diff_steps, dtype=torch.float64)
@@ -53,9 +52,11 @@ def reverse_mean(x_t, t, eps_pred):
     return (x_t - eps_scale * eps_pred) / step_value(alphas.sqrt(), t, x_t)
 
 
-# Reverse step: x_prev = mu_theta(x_t, t) + sqrt(beta_t) * z; z = 0 when t = 0.
+# p_theta(x_prev | x_t) = N(mu_theta(x_t, t), beta_t I), for t > 0.
+# mu_theta = posterior_mean(predict_x0(x_t, t, eps_pred), x_t, t), optionally clipped.
+# Sample x_prev = mu_theta + sqrt(beta_t) * z, z ~ N(0, I); at t = 0 return mu_theta.
 @torch.no_grad()
-def p_sample(model, x_t, t, noise=None, *, clip_denoised=True):
+def p_sample(model, x_t, t, noise=None, *, clip_denoised=False):
     t = t.to(device=x_t.device)
     eps_pred = model(x_t, t)
     x_0 = predict_x0(x_t, t, eps_pred)
@@ -69,19 +70,6 @@ def p_sample(model, x_t, t, noise=None, *, clip_denoised=True):
         raise ValueError("noise must match the shape, device and dtype of x_t")
     add_noise = (t > 0).reshape((t.shape[0],) + (1,) * (x_t.ndim - 1))
     return mean + add_noise * std * noise
-
-
-# Sample x_0: start from Gaussian noise and repeat reverse steps for t = T-1, ..., 0.
-@torch.no_grad()
-def p_sample_loop(model, shape, *, device, dtype=torch.float32, clip_denoised=True, progress=False):
-    x_t = torch.randn(shape, device=device, dtype=dtype)
-    for step in tqdm(
-        reversed(range(num_diff_steps)), total=num_diff_steps, desc="DDPM sampling",
-        dynamic_ncols=True, disable=not progress,
-    ):
-        t = torch.full((x_t.shape[0],), step, device=x_t.device, dtype=torch.long)
-        x_t = p_sample(model, x_t, t, clip_denoised=clip_denoised)
-    return x_t
 
 
 def ddpm_loss(model, x_0):

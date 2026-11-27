@@ -103,8 +103,6 @@ class ForecastDataset(Dataset):
             raise ValueError(f"Non-numeric data at {path}")
         if not np.isfinite(values).all():
             raise ValueError(f"Non-finite grid values at {path}")
-        if np.any(values < self.value_min) or np.any(values > self.value_max):
-            raise ValueError(f"Out-of-range physical values at {path}")
         values = np.asarray(values, dtype=np.float32)
         return (torch.from_numpy(values) - self.value_min) * (2 / (self.value_max - self.value_min)) - 1
 

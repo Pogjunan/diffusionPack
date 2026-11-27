@@ -3,9 +3,11 @@ from pathlib import Path
 
 import torch
 from torchvision.utils import save_image
+from tqdm.auto import tqdm
 
 from ..backbone import DDPMUNet
-from ..diffusion import p_sample_loop
+from ..config import num_diff_steps
+from ..diffusion import p_sample
 from .train import choose_device, load_checkpoint
 
 
@@ -22,11 +24,13 @@ def run_inference(args):
     generated = []
     for start in range(0, args.samples, args.batch_size):
         count = min(args.batch_size, args.samples - start)
-        result = p_sample_loop(
-            model, (count, config["in_channels"], config["resolution"], config["resolution"]),
-            device=device, progress=args.progress
-        )
-        generated.append(result.clamp(-1, 1).add(1).div(2).cpu())
+        shape = (count, config["in_channels"], config["resolution"], config["resolution"])
+        x_t = torch.randn(shape, device=device)
+        for step in tqdm(reversed(range(num_diff_steps)), total=num_diff_steps,
+                         desc="DDPM sampling", dynamic_ncols=True, disable=not args.progress):
+            t = torch.full((count,), step, device=device, dtype=torch.long)
+            x_t = p_sample(model, x_t, t, clip_denoised=True)
+        generated.append(x_t.clamp(-1, 1).add(1).div(2).cpu())
         print(f"generated={start + count}/{args.samples}", flush=True)
     images = torch.cat(generated)
     path = Path(args.output)
