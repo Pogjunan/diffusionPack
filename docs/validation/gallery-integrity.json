@@ -1,0 +1,13 @@
+{
+  "status": "PASS",
+  "artifacts_verified": 31,
+  "samples": 30,
+  "native_rgb_size": [
+    32,
+    32
+  ],
+  "unique_samples": 30,
+  "grid_matches_individuals": true,
+  "wrong_hash_rejected": true,
+  "limitations": "File integrity only. Does not measure image quality or prove training provenance."
+}

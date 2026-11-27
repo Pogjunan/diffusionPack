@@ -1,0 +1,229 @@
+{
+  "run_id": "ddpm-light-cifar10-epoch20-step250000-seed42",
+  "dataset_version": "CIFAR-10 Python training split, 50000 images",
+  "code_revision": "Local export training run; exact git revision was not recorded. Source hashes below identify retained local files.",
+  "reviewed_repository_revision": "28d9a933690825232c9a33f67b747cca8f65fb2d",
+  "seed": 42,
+  "evaluated_split": "not applicable: unconditional generation without paired targets",
+  "metric_definition": "Qualitative gallery only; no FID or other quality metric computed",
+  "checkpoint_selection_split": "not applicable: fixed user-requested final 20 epoch budget",
+  "command": "python -m diffusionpack.main.inference --checkpoint runs/cifar_light/epoch_20.pt --device cuda:0 --weights ema --seed 42 --samples 30 --batch-size 2 --output grid.png --individual-dir samples",
+  "command_note": "The original local inference script had an added --individual-dir option. This is a record of that run, not an option in the reviewed GitHub revision.",
+  "checkpoint": {
+    "name": "epoch_20.pt",
+    "sha256": "c7daaa51024d6491ef5733182d127cba6fb671a7053952363d654c4fd38cae67",
+    "step": 250000,
+    "scheduler_updates": 249899,
+    "published": false
+  },
+  "model_config": {
+    "resolution": 32,
+    "in_channels": 3,
+    "base_channels": 64,
+    "channel_mult": [
+      1,
+      2,
+      2,
+      2
+    ],
+    "num_res_blocks": 1,
+    "attention_resolutions": [
+      16
+    ],
+    "dropout": 0.1
+  },
+  "parameters": 6079811,
+  "training": {
+    "epochs": 20,
+    "batch_size": 4,
+    "lr": 0.0002,
+    "warmup_steps": 5000,
+    "ema_decay": 0.9999,
+    "amp": true,
+    "seed": 42,
+    "includes_checkpoint_restarts": true
+  },
+  "sampling": {
+    "weights": "ema",
+    "samples": 30,
+    "batch_size": 2,
+    "seed": 42,
+    "ddpm_steps": 1000
+  },
+  "environment": {
+    "gpu_name": "NVIDIA L40S",
+    "python": "3.10.19",
+    "torch": "2.10.0+cu128",
+    "torchvision": "0.25.0+cu128",
+    "cuda_runtime": "12.8"
+  },
+  "retained_training_source_sha256": {
+    "diffusionpack/backbone/ddpm_unet.py": "e79c214ec3e0810aa8fbadce3aafb452974b065644036d8679f427574c03baeb",
+    "diffusionpack/config.py": "bdfe08a7f2da1732c1936dbd1e5fbe83b73796396e124c6f3e39f0e4cc37824a",
+    "diffusionpack/diffusion.py": "4eb5679fd3c1a289eb28edc70590b645f6f5780088aafbbdc856b4fedac8a71c",
+    "diffusionpack/main/train.py": "4e8163ee532f369975d0305045b8a66d1aedcf5bedfae6c676635c95a5188a68"
+  },
+  "artifacts": [
+    {
+      "role": "generated-image-grid",
+      "path": "grid.png",
+      "sha256": "550de432418ba4e239960ed14b1ea5061e21a6e9db9ee1d666e1210b573c4dce"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_001.png",
+      "sha256": "275bd708cfd2b7f34ff54d18b5c3349ff7289446d572c64be9c2ea0780fb5bb1"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_002.png",
+      "sha256": "e085ad19001562b7952053823335db84b47e1766dce215e882f674341db753b0"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_003.png",
+      "sha256": "679363bb5b82fcb9537b34744d6e18627341ce9a8dc9e88973477ad2ed14d098"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_004.png",
+      "sha256": "fb8e6c5e0b8c92e33884b4404c0bfa82fa4a124e243e62151f9ff784841022cd"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_005.png",
+      "sha256": "21ad2682544f48d4324f9fbc45a5a2e0a76b3ea537dbd4db322e35f74459a4a0"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_006.png",
+      "sha256": "1790dacad8bcdb443f77b46e7291537f3158ded5151aa2cc34cbe2dd523ae4f7"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_007.png",
+      "sha256": "3e5e648d9270a11cd7b6f2d66ff41481a80e8d754898963741305a3b93ea3d1a"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_008.png",
+      "sha256": "70a6560f5935f5eb6e89458c8d566d47dbbc9c1366dbbf91530c9b362a4a44ad"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_009.png",
+      "sha256": "e3feab115a352c504fd7f552d36512e443304525bcb82f9efbd7a285a287fcab"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_010.png",
+      "sha256": "40418294689fa7068cf3800109ad0047173ace37c449cbaad9688f7993f708ba"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_011.png",
+      "sha256": "b9f8d27eb0daf86c4b5d94a1589a28353a1b8b7a6fb4061fe3ddb51034e621bd"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_012.png",
+      "sha256": "f47949640d1788b31c0b9721b4a506095f024711cc7d4e4aa0cab1bd53a7683e"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_013.png",
+      "sha256": "7e94e3b4f61340ecb2c06875c2d36a67ff4dbcad2bde621e1989edbc4b15679d"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_014.png",
+      "sha256": "21b6cce631271186f94b6c270113864dc24cd017e10a054ce8cd6a65de5a9574"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_015.png",
+      "sha256": "8638aa720b79569d7cdf5ab5024f49ac70fd84bc8f184bd45f1d3d846eed0377"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_016.png",
+      "sha256": "48b5e8a8bf8bd5296f6efa12ed8af1e0e967b0ab9d7f70120bb36cde7d07fc2e"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_017.png",
+      "sha256": "39dc6b671a00c1aaf1bd904d078b6c6dfaf67e1fc6435cd51f9e9b0af3c8ccac"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_018.png",
+      "sha256": "918b685240a4b15a43488578d7b5556e34e22b0b0f5166a7021172651b483819"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_019.png",
+      "sha256": "4b36ad0c400a28b8cf53c28ddb039fcccd4d1a7107a5e8f3edac64cbe3751093"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_020.png",
+      "sha256": "12747e6b260f0a3501ef992086b227fdc3888bcf4cec11b678692229f5456a9f"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_021.png",
+      "sha256": "b02f3d891ee71129848f7f0e0d3258b2e6e4b90c0d605577cfbcd795cb7e43fc"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_022.png",
+      "sha256": "01c24da71c34eeb5c7f6361bc621f040a362dd2ce6112f8d04768460063a4fbe"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_023.png",
+      "sha256": "cfa5fb4a2632dd72be431bd3c22770d9c5fdfba95fdcacb471091327721627ca"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_024.png",
+      "sha256": "0e18495d99c9f232f1cf975e11bb7e6b97ce9aece5261063cf982f5380b39393"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_025.png",
+      "sha256": "2f9a1e5239aaf689707ccadce32ce4d7f69d1fe8ac1e5564b9e1a7160e77d269"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_026.png",
+      "sha256": "4bb53e41a83d3bdb5642fb8b87b8c13a8cc4711df228c0c092441ef5d4d33cf4"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_027.png",
+      "sha256": "534e533443126a3f04ea470bd0b51f4924e4f3894ec571e94eaf6097cbff9fa7"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_028.png",
+      "sha256": "40352d79ae0b720699a4a6595e775ff671a2b55aa398e9e8d1b483ee4d7c31bb"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_029.png",
+      "sha256": "0c93a3866ab722ba796622d05f9e55ee7edd3920c646ff9b98f6813427b5ea72"
+    },
+    {
+      "role": "generated-image",
+      "path": "sample_030.png",
+      "sha256": "53c544a22cd02775bf984adcd7bd1fd07bd161c92a84b8ca3de6ceae7178b8a4"
+    }
+  ],
+  "limitations": [
+    "L40S execution, not RTX 3060 Ti validation.",
+    "No training rerun or FID evaluation performed for publication.",
+    "Gallery predates the reviewed commit; it is not a training run of that commit.",
+    "Checkpoint remains local; it is not included in this repository update."
+  ]
+}

@@ -43,6 +43,15 @@ class TestPythonLaunch(unittest.TestCase):
         with self.assertRaises(ValueError):
             run_training(TrainConfig(steps=50, epochs=30))
 
+    def test_invalid_configuration_fails_before_loading_data(self):
+        for setting in ({"lr": -1}, {"warmup_steps": -1}, {"batch_size": 0},
+                        {"save_every": 0}, {"log_every": 0}, {"steps": 0}):
+            config = TrainConfig(epochs=None, steps=1)
+            for key, value in setting.items():
+                setattr(config, key, value)
+            with self.subTest(setting=setting), self.assertRaisesRegex(ValueError, "Invalid"):
+                run_training(config)
+
     def test_sampling_progress_option(self):
         class Zero(torch.nn.Module):
             def forward(self, x, t):

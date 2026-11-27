@@ -143,7 +143,7 @@ def run_training(args):
         args.batch_size < 1 or args.save_every < 1 or args.log_every < 1 or
         args.lr is not None and args.lr <= 0 or
         args.warmup_steps is not None and args.warmup_steps < 0):
-        parser.error("Invalid steps, epochs, batch size, learning rate or warmup")
+        raise ValueError("Invalid steps, epochs, batch size, learning rate or warmup")
 
     args.output = args.output or (str(Path(args.resume).parent) if args.resume else f"runs/{args.model}_{args.dataset}")
     torch.manual_seed(args.seed)

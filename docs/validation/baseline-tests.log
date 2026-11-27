@@ -1,0 +1,85 @@
+test_forward_backward_ema_and_sampling (test_cuda.TestCUDA) ... ok
+test_ddpm_loss_gradient_and_target (test_diffusion.TestDiffusion) ... ok
+test_p_sample_clips_x0 (test_diffusion.TestDiffusion) ... ok
+test_p_sample_loop_state_and_order (test_diffusion.TestDiffusion) ... ok
+test_p_sample_noise_and_final_step (test_diffusion.TestDiffusion) ... ok
+test_q_sample_known_noise (test_diffusion.TestDiffusion) ... ok
+test_reverse_mean_and_x0 (test_diffusion.TestDiffusion) ... ok
+test_schedule (test_diffusion.TestDiffusion) ... ok
+test_step_value (test_diffusion.TestDiffusion) ... ok
+test_step_value_rejects_invalid_inputs (test_diffusion.TestDiffusion) ... ok
+test_config_entries (test_launch.TestPythonLaunch) ... ok
+test_python_launch_and_resume (test_launch.TestPythonLaunch) ... target_steps=1 steps_per_epoch=1 learning_rate=0.0002 warmup=5000
+device=cpu channels=3 base=64 images=2 parameters=6,079,811 amp=False
+step=1/1 epoch=1.00 loss=0.996683 lr=0.00000000
+saved=/tmp/tmpidha5f6g/latest.pt
+target_steps=2 steps_per_epoch=1 learning_rate=0.0002 warmup=5000
+device=cpu channels=3 base=64 images=2 parameters=6,079,811 amp=False
+step=2/2 epoch=2.00 loss=0.996683 lr=0.00000004
+saved=/tmp/tmpidha5f6g/latest.pt
+ok
+test_rejects_both_steps_and_epochs (test_launch.TestPythonLaunch) ... ok
+test_sampling_progress_option (test_launch.TestPythonLaunch) ... DDPM sampling:   0%|                                                                                                                                     | 0/2 [00:00<?, ?it/s]DDPM sampling: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2/2 [00:00<00:00, 2981.03it/s]
+ok
+test_amp_training_ema_and_sampling (test_pipeline.TestLightCUDA) ... ok
+test_epochs_learning_rate_and_resume_cli (test_pipeline.TestPipeline) ... DDPM training:   0%|                                                                                                                                     | 0/2 [00:00<?, ?it/s]target_steps=2 steps_per_epoch=2 learning_rate=0.0003 warmup=5000
+device=cpu channels=3 base=64 images=4 parameters=6,079,811 amp=False
+DDPM training:   0%|                                                                                                            | 0/2 [00:00<?, ?it/s, loss=0.9967 lr=0.00e+00]DDPM training:  50%|██████████████████████████████████████████████████                                                  | 1/2 [00:00<00:00,  7.23it/s, loss=0.9967 lr=0.00e+00]                                                                                                                                                                               DDPM training:  50%|██████████████████████████████████████████████████                                                  | 1/2 [00:00<00:00,  7.23it/s, loss=0.9967 lr=0.00e+00]DDPM training: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████| 2/2 [00:00<00:00,  5.82it/s, loss=0.9967 lr=0.00e+00]DDPM training: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████| 2/2 [00:00<00:00,  6.00it/s, loss=0.9967 lr=0.00e+00]
+saved=/tmp/tmpdy15b7_e/latest.pt
+DDPM training:  50%|██████████████████████████████████████████████████████████████████▌                                                                  | 2/4 [00:00<?, ?it/s]target_steps=4 steps_per_epoch=2 learning_rate=0.0003 warmup=5000
+device=cpu channels=3 base=64 images=4 parameters=6,079,811 amp=False
+DDPM training:  75%|█████████████████████████████████████████████████████████████████████████████████████████████▊                               | 3/4 [00:00<00:00,  6.69it/s]                                                                                                                                                                               DDPM training:  75%|█████████████████████████████████████████████████████████████████████████████████████████████▊                               | 3/4 [00:00<00:00,  6.69it/s]DDPM training: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:00<00:00,  2.59it/s]DDPM training: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:00<00:00,  2.85it/s]
+ok
+test_folder_images_without_labels (test_pipeline.TestPipeline) ... ok
+test_inference_creates_png (test_pipeline.TestPipeline) ... saved=/tmp/tmpdy15b7_e/latest.pt
+DDPM sampling:   0%|                                                                                                                                     | 0/2 [00:00<?, ?it/s]DDPM sampling: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2/2 [00:00<00:00, 34.90it/s]
+generated=2/2
+saved=/tmp/tmp4udarzex/sample.png
+ok
+test_light_preserves_ddpm_steps (test_pipeline.TestPipeline) ... ok
+test_save_and_restore (test_pipeline.TestPipeline) ... ok
+test_synthetic_dataset (test_pipeline.TestPipeline) ... ok
+test_warmup_and_ema_cpu (test_pipeline.TestPipeline) ... ok
+test_bad_512_channel_configuration_rejected (test_prediction.TestPrediction) ... ok
+test_condition_can_change_epsilon_prediction (test_prediction.TestPrediction) ... ok
+test_cpu_train_resume_and_inference (test_prediction.TestPrediction) ... train_windows=5 exclusions={'missing_history': 2, 'late_history': 0, 'missing_target': 2} target_steps=1
+train_windows=5 exclusions={'missing_history': 2, 'late_history': 0, 'missing_target': 2} target_steps=2
+saved=/tmp/tmprlro70jy/forecasts/epoch_0_step_2_ema_seed_42_tmp5l85b6b2
+saved=/tmp/tmprlro70jy/forecasts/epoch_0_step_2_ema_seed_51_tmpiuoh9ukk
+saved=/tmp/tmprlro70jy/forecasts/epoch_0_step_2_ema_seed_51_tmp14kpb6lo
+ok
+test_duplicate_timestamps_detected (test_prediction.TestPrediction) ... ok
+test_epsilon_training_matches_independent_reference (test_prediction.TestPrediction) ... ok
+test_exact_forecast_origin_and_values (test_prediction.TestPrediction) ... ok
+test_forecast_issued_between_grid_timestamps (test_prediction.TestPrediction) ... ok
+test_history_is_constant_at_every_reverse_step (test_prediction.TestPrediction) ... ok
+test_issue_lag_preserves_lead_with_delayed_observations (test_prediction.TestPrediction) ... ok
+test_late_published_history_rejected (test_prediction.TestPrediction) ... ok
+test_missing_grid_not_treated_as_adjacent (test_prediction.TestPrediction) ... ok
+test_model_channels_and_conditional_gradient (test_prediction.TestPrediction) ... ok
+test_nans_and_scaling_are_not_silently_clipped (test_prediction.TestPrediction) ... ok
+test_time_zone_equivalence_and_naive_rejection (test_prediction.TestPrediction) ... ok
+test_unavailable_future_still_allows_inference (test_prediction.TestPrediction) ... ok
+test_full_sampling_keeps_condition_fixed (test_restore.TestRestore) ... ok
+test_noise_and_loss_belong_to_target (test_restore.TestRestore) ... ok
+test_paired_training_resume_and_condition_only_inference (test_restore.TestRestore) ... ok
+test_update_uses_condition_channels (test_restore.TestRestore) ... ok
+test_ambiguous_missing_and_unaligned_pairs (test_restore_data.TestRestoreData) ... ok
+test_cifar_jpeg_quality_changes_only_condition (test_restore_data.TestRestoreData) ... ok
+test_pairs_and_condition_only_input (test_restore_data.TestRestoreData) ... ok
+test_train_step_without_scheduler (test_train.TestTraining) ... ok
+test_warmup_and_ema_updates (test_train.TestTraining) ... ok
+test_512_resolution_only_is_not_original_layout (test_unet.TestUNet) ... ok
+test_attention_matches_einsum (test_unet.TestUNet) ... ok
+test_downsample_padding (test_unet.TestUNet) ... ok
+test_initialization_scale (test_unet.TestUNet) ... ok
+test_nearest_upsampling (test_unet.TestUNet) ... ok
+test_original_and_512_layouts (test_unet.TestUNet) ... ok
+test_shortcut_linear_matches_1x1_convolution (test_unet.TestUNet) ... ok
+test_small_cpu_forward_and_backward (test_unet.TestUNet) ... ok
+test_timestep_embedding (test_unet.TestUNet) ... ok
+
+----------------------------------------------------------------------
+Ran 55 tests in 8.691s
+
+OK
