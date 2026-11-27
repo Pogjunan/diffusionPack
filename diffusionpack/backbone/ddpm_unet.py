@@ -175,6 +175,7 @@ class DDPMUNet(nn.Module):
             raise ValueError('Image channels and resolution must match the U-Net configuration')
         if t.shape != (x.shape[0],) or t.dtype not in (torch.int32, torch.int64):
             raise ValueError('t must be a length-B integer tensor')
+        t = t.to(device=x.device)
         temb = timestep_embedding(t, self.base_channels)
         temb = self.time_dense1(F.silu(self.time_dense0(temb)))
         h = self.conv_in(x)

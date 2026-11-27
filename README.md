@@ -39,3 +39,25 @@ for images in image_batches:
 ```
 
 Use `ema_model` with `p_sample_loop` for sampling.
+
+## 512×512 Research Configuration
+
+This seven-level configuration adds a 512×512 stage to the original 256×256 DDPM U-Net, preserving the original channel widths at 256×256 and below. It has not been validated for generation quality or full-resolution GPU memory use.
+
+```python
+import torch
+from diffusionpack.backbone import DDPMUNet
+
+device = torch.device("cuda:0")
+model = DDPMUNet(
+    resolution=512,
+    in_channels=1,
+    base_channels=128,
+    channel_mult=(1, 1, 1, 2, 2, 4, 4),
+    num_res_blocks=2,
+    attention_resolutions=(16,),
+    dropout=0.0,
+).to(device)
+```
+
+Keep data tensors on the same device as the model. A full 512×512 training run needs GPU memory validation.

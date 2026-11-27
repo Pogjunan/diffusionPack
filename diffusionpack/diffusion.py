@@ -68,6 +68,7 @@ def reverse_mean(x_t, t, eps_pred):
 
 @torch.no_grad()
 def p_sample(model, x_t, t, noise=None, *, clip_denoised=True):
+    t = t.to(device=x_t.device)
     eps_pred = model(x_t, t)
     x_0 = predict_x0(x_t, t, eps_pred)
     if clip_denoised:
