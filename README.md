@@ -10,15 +10,26 @@ The implementations follow original research papers and the released code where 
 
 I have verified the current diffusion implementations against these mathematical formulations within the scope of my understanding. I intended as research baselines for conditional generation, time-series generation(etc. forecasting), and the development of new diffusion methods. The priority is implementing the methods described in the original papers.
 
-## Models
+## Methods and Tasks
+
+### Diffusion Methods
 
 | Method | Description |
 | --- | --- |
-| DDPM | Markovian diffusion and stochastic generation |
-| DDIM | Non-Markovian diffusion and accelerated sampling |
-| Restoration | Conditional diffusion for image-to-image restoration |
-| Prediction | Conditional diffusion for spatiotemporal forecasting |
-| Drifting Models | Planned implementation |
+| DDPM | Markovian Denoising Diffusion Probabilistic Model |
+| DDIM | Non-Markovian diffusion with accelerated sampling |
+
+### Tasks
+
+| Task | Purpose | Condition |
+| --- | --- | --- |
+| Generation | Generate images from Gaussian noise | None |
+| Restoration | Recover clean images from degraded images | Degraded images |
+| Prediction | Forecast future spatial maps from past observations | Historical maps |
+
+All three tasks support DDPM and DDIM sampling. The SCRD backbone currently uses DDPM only.
+
+*Planned: Drifting Models.*
 
 The following samples were generated using the light DDPM model on an NVIDIA RTX 3060.
 
