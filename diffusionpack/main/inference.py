@@ -26,7 +26,8 @@ def run_inference(args):
         count = min(args.batch_size, args.samples - start)
         shape = (count, config["in_channels"], config["resolution"], config["resolution"])
         x_t = torch.randn(shape, device=device)
-        image = p_sample_loop(model, x_t, clip_denoised=True, progress=args.progress)
+        image = p_sample_loop(model, x_t, clip_denoised=True, progress=args.progress,
+                              sampler=args.sampler, sampling_steps=args.sampling_steps, eta=args.eta)
         generated.append(image.add(1).div(2).cpu())
         print(f"generated={start + count}/{args.samples}", flush=True)
     images = torch.cat(generated)
@@ -45,6 +46,9 @@ def main():
     parser.add_argument("--device", default="auto")
     parser.add_argument("--weights", choices=("ema", "model"), default="ema")
     parser.add_argument("--progress", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--sampler", choices=("ddpm", "ddim"), default="ddpm")
+    parser.add_argument("--sampling-steps", type=int)
+    parser.add_argument("--eta", type=float, default=0.0)
     run_inference(parser.parse_args())
 
 

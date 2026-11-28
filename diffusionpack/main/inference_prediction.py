@@ -4,6 +4,7 @@ from tempfile import TemporaryDirectory
 import numpy as np
 import torch
 
+from .. import diffusion
 from ..backbone.prediction_unet import PredictionUNet
 from ..scrd.unet import SCRDUNet
 from ..prediction import prediction_sample
@@ -21,7 +22,10 @@ def infer_prediction(config):
     training = saved.get("training", {})
     if training.get("task") != "prediction":
         raise ValueError("Use a prediction checkpoint")
+    sampling_options = dict(progress=config.progress)
     if training.get("backbone", "ddpm") == "scrd":
+        if config.sampler != "ddpm" or config.sampling_steps not in (None, diffusion.num_diff_steps) or config.eta != 0:
+            raise ValueError("SCRD uses the existing DDPM sampler")
         expected = dict(noise_conditioning="scrd_timestep", prediction_target="residual", reverse_variance="beta")
         if any(training.get(key) != value for key, value in expected.items()):
             raise ValueError("SCRD checkpoint must use integer time, residual targets and core beta variance")
@@ -34,6 +38,7 @@ def infer_prediction(config):
             raise ValueError("Retrain old conditional checkpoints for gamma conditioning and AdaGN")
         model_class = PredictionUNet
         sample_function = prediction_sample
+        sampling_options.update(sampler=config.sampler, sampling_steps=config.sampling_steps, eta=config.eta)
     settings = saved["model_config"]
     model = model_class(**settings).to(device)
     model.load_state_dict(saved[config.weights])
@@ -65,7 +70,7 @@ def infer_prediction(config):
             history = history.unsqueeze(0).to(device)
             stamp = origin.removesuffix("+00:00").replace(":", "") + "Z"
             for sample in range(1, config.samples + 1):
-                predicted = sample_function(model, history, progress=config.progress)
+                predicted = sample_function(model, history, **sampling_options)
                 grid = inverse_scale(predicted[0].float().cpu(), source.value_min, source.value_max)
                 if not torch.isfinite(grid).all():
                     raise ValueError(f"Non-finite forecast for {origin}, sample {sample}")

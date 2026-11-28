@@ -17,7 +17,8 @@ def restore_loss(model, target, condition):
 
 
 @torch.no_grad()
-def restore_sample(model, condition, *, clip_denoised=False, progress=False):
+def restore_sample(model, condition, *, clip_denoised=False, progress=False,
+                   sampler="ddpm", sampling_steps=None, eta=0.0):
     height, width = condition.shape[-2:]
     shape = (condition.shape[0], model.target_channels, height, width)
     x_t = torch.randn(shape, device=condition.device, dtype=condition.dtype)
@@ -26,4 +27,5 @@ def restore_sample(model, condition, *, clip_denoised=False, progress=False):
         gamma = diffusion.step_value(diffusion.alpha_bars, t, x_t).reshape(-1)
         return model(x_t, gamma, condition)
 
-    return p_sample_loop(denoiser, x_t, clip_denoised=clip_denoised, progress=progress)
+    return p_sample_loop(denoiser, x_t, clip_denoised=clip_denoised, progress=progress,
+                         sampler=sampler, sampling_steps=sampling_steps, eta=eta)

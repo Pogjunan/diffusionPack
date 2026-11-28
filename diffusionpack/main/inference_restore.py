@@ -45,7 +45,9 @@ def infer_restore(config):
     loader = DataLoader(selection, batch_size=config.batch_size)
     written = 0
     for condition, reference in loader:
-        result = restore_sample(model, condition.to(device), clip_denoised=True, progress=config.progress)
+        result = restore_sample(model, condition.to(device), clip_denoised=True,
+                                progress=config.progress, sampler=config.sampler,
+                                sampling_steps=config.sampling_steps, eta=config.eta)
         for index, image in enumerate(result):
             name = reference[index] if config.condition_path is not None else f"{written:06d}.png"
             path = output / name

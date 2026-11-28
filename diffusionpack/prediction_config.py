@@ -51,3 +51,6 @@ class PredictionInferenceConfig(Config):
     progress = True
     samples = 1
     target_csv = None
+    sampler = "ddpm"
+    sampling_steps = None
+    eta = 0.0

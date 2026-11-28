@@ -36,3 +36,6 @@ class RestoreInferenceConfig(Config):
     device = "auto"
     weights = "ema"
     progress = True
+    sampler = "ddpm"
+    sampling_steps = None
+    eta = 0.0

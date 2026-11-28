@@ -2,7 +2,7 @@
 
 ## Abstract
 
-diffusionPack is a PyTorch package for developing and studying diffusion-based generative models. It starts with Denoising Diffusion Probabilistic Models (DDPM) and aims to provide reusable implementations for unconditional and conditional generation, reducing the need to rebuild baselines for each research project. The next implementation is DDIM. Later work will cover [Drifting Models](https://arxiv.org/abs/2602.04770).
+diffusionPack is a PyTorch package for developing and studying diffusion-based generative models. It implements Denoising Diffusion Probabilistic Models (DDPM) and DDIM sampling, and aims to provide reusable implementations for unconditional and conditional generation, reducing the need to rebuild baselines for each research project. Later work will cover [Drifting Models](https://arxiv.org/abs/2602.04770).
 
 ## Implementation Principles
 
@@ -16,15 +16,18 @@ Implementations are developed with reference to original research papers and pub
 | Restoration | Degraded image | Clean image |
 | Prediction | Past spatial maps | One or more future maps |
 
-Choose `model = "original"` for the CIFAR-10 U-Net defaults or `model = "light"` for a smaller U-Net. All tasks use the same 1,000-step DDPM reverse schedule. Unconditional generation keeps integer timestep conditioning. Restoration and Prediction use continuous gamma conditioning during training and AdaGN in the residual blocks.
+Choose `model = "original"` for the CIFAR-10 U-Net defaults or `model = "light"` for a smaller U-Net. The training schedule has 1,000 steps. Unconditional generation uses integer timestep conditioning. Restoration and the basic Prediction U-Net use continuous gamma conditioning during training and AdaGN.
 
 In [run.py](run.py), set `task` to `"unconditional"`, `"restore"` or `"prediction"` and `action` to `"train"` or `"inference"`. Run `python run.py`.
+
+For unconditional generation, restoration and the basic Prediction U-Net, choose `sampler="ddim"`, `sampling_steps=50`, `eta=0.0` in the inference config to sample with DDIM. The default sampler remains DDPM. DDIM reuses the trained model and training schedule. Choose `1 <= sampling_steps <= 1000` and `0 <= eta <= 1`; `eta=1` uses the posterior variance rather than the existing DDPM sampler's beta variance. For direct sampler calls, use `model.eval()`; `eta=0` gives deterministic sampling for a fixed initial noise and trajectory. The SCRD prediction and comparison paths retain their existing DDPM samplers.
 
 [![Unconditional DDPM Light samples](examples/light/grid.png)](examples/light)
 
 ## References
 
 - DDPM. [Paper](https://arxiv.org/abs/2006.11239) · [Diffusion equations in TensorFlow](https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/diffusion_utils_2.py) · [U-Net](https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py)
+- DDIM. [Paper](https://arxiv.org/abs/2010.02502) · [Author code](https://github.com/ermongroup/ddim) · [Sampler](diffusionpack/ddim.py)
 - Restoration uses Palette-style channel concatenation and conditional noise prediction, with [SR3-style gamma sampling](https://arxiv.org/abs/2104.07636) (uniform step interval, then uniform interpolation between adjacent cumulative alphas) and [AdaGN](https://arxiv.org/abs/2105.05233). [Palette, Section 3](https://arxiv.org/html/2111.05826v2#S3) · [Independent PyTorch implementation](https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/136b29f58d0af6e5db9f3655d2891f5a855fcdaa/models/network.py)
 - Prediction extends the same conditional denoiser to a fixed history and joint future maps. [Forecast dataset](diffusionpack/main/prediction_data.py) · [Related work on past-frame conditioning](https://arxiv.org/abs/2205.09853)
 
@@ -91,6 +94,6 @@ Run `python run_prediction.py` first with `mode = "check"`, then with `mode = "t
 
 ## Conditional training and checkpoints
 
-Gamma is sampled between `alpha_bars[t]` and `alpha_bars_prev[t]` during training. The same gamma is used to create the noisy target and as the input to the existing sinusoidal embedding. During sampling, the model receives the fixed `alpha_bars[t]` at each discrete DDPM step. The schedule and reverse equations are unchanged. This is not a full SR3, Palette or MCVD reproduction.
+For the basic conditional U-Net, gamma is sampled between `alpha_bars[t]` and `alpha_bars_prev[t]` during training. The same gamma is used to create the noisy target and as the input to the existing sinusoidal embedding. During sampling, the model receives the fixed `alpha_bars[t]` at each selected DDPM or DDIM step. The training schedule is unchanged. This is not a full SR3, Palette or MCVD reproduction.
 
-The new conditional models need new checkpoints because the noise-level input and AdaGN projection sizes differ from the previous implementation. Unconditional checkpoint shapes are unchanged. The training/inference schedules are not independently configurable yet. Run `python -m pytest -q` for structural and CPU integration tests; actual forecast accuracy and GPU training require separate experiments.
+The new conditional models need new checkpoints because the noise-level input and AdaGN projection sizes differ from the previous implementation. Unconditional checkpoint shapes are unchanged. DDIM selects a subset of the training noise schedule; it does not create a new beta schedule. Run `python -m pytest -q` for structural and CPU integration tests; actual forecast accuracy and GPU training require separate experiments.
