@@ -2,7 +2,7 @@
 
 ## Abstract
 
-diffusionPack is a PyTorch package for studying generative models and developing baselines for future research.
+diffusionPack is a PyTorch package for developing and studying diffusion-based generative models. It implements Denoising Diffusion Probabilistic Models (DDPM) and DDIM sampling, and aims to provide reusable implementations for unconditional and conditional generation, reducing the need to rebuild baselines for each research project. Later work will cover [Drifting Models](https://arxiv.org/abs/2602.04770).
 
 ## Implementation Principles
 
@@ -40,21 +40,115 @@ from diffusionpack.ddim import ddim_sample
 
 ## Working with the Source
 
-Clone the repository for experiments and method development.
-
 ```bash
 git clone https://github.com/Pogjunan/diffusionPack.git
 cd diffusionPack
-python -m pip install -e .
 ```
 
-In [run.py](run.py), select `task` (`unconditional`, `restore`, or `prediction`) and `action` (`train` or `inference`), configure the dataset and model, and run:
+Install the dependencies listed in [setup.py](setup.py) in your Python environment before running the examples. Edit the shared diffusion schedule in [config.py](diffusionpack/config.py):
 
-```bash
-python run.py
+```python
+num_diff_steps = 1000
+beta_start = 0.0001
+beta_end = 0.02
 ```
 
-For inference with DDIM, set `sampler="ddim"`, `sampling_steps=50`, and `eta=0.0` in the corresponding inference configuration.
+Keep this schedule unchanged between training and inference. DDIM reuses the trained noise predictor; `sampling_steps` controls inference only.
+
+## Examples
+
+### 1. Unconditional image generation (DDPM)
+
+Put your images in `data/images/train/` and keep `valid/` and `test/` separate for evaluation. To customize image loading or the U-Net, edit [train.py](diffusionpack/main/train.py) (`get_dataset`, `model_settings`) or [ddpm_unet.py](diffusionpack/backbone/ddpm_unet.py).
+
+Set these values in [run.py](run.py):
+
+```python
+task = "unconditional"
+action = "train"
+
+unconditional_train = TrainConfig(
+    dataset="folder", data_root="data/images/train",
+    model="light", resolution=32, batch_size=8, epochs=30,
+    output="runs/images",
+)
+unconditional_inference = InferenceConfig(
+    checkpoint="runs/images/latest.pt", sampler="ddpm",
+    samples=8, output="runs/images/samples.png",
+)
+```
+
+Run `python run.py` to train, then set `action = "inference"` and run it again to generate images. Use `valid/` and `test/` for separate evaluation; the current training loop does not evaluate them automatically.
+
+### 2. Paired image restoration (DDIM-40)
+
+Prepare matching degraded and clean images in `data/restore/train/condition/` and `data/restore/train/target/`. Use the same folder structure for `valid/` and `test/`. Customize [restore_data.py](diffusionpack/main/restore_data.py) and [restore_unet.py](diffusionpack/backbone/restore_unet.py) if needed.
+
+In [run.py](run.py):
+
+```python
+task = "restore"
+action = "train"
+
+restore_train = RestoreTrainConfig(
+    dataset="paired", condition_dir="data/restore/train/condition",
+    target_dir="data/restore/train/target", resolution=128,
+    model="light", base_channels=32, batch_size=2,
+    epochs=30, output="runs/restore",
+)
+restore_inference = RestoreInferenceConfig(
+    checkpoint="runs/restore/latest.pt",
+    condition_path="data/restore/test/condition",
+    sampler="ddim", sampling_steps=40, eta=0.0,
+    output="runs/restore/images",
+)
+```
+
+Run `python run.py` with `action = "train"`, then `action = "inference"`. Compare the restored images with `data/restore/test/target/`; use `valid/condition/` and `valid/target/` for validation separately.
+
+### 3. Solar irradiance forecasting (DDIM-50)
+
+Predict one 512 × 512 SSI map 30 minutes ahead from five past maps. Save the original numerical grids as `.npy` files and prepare chronological `train.csv`, `valid.csv`, and `test.csv` splits under `data/ssi/`. Each CSV lists observation time, grid path (relative to the CSV), and availability time. For example, six consecutive rows of `test.csv` could be:
+
+```csv
+timestamp,path,available_at
+2021-02-19T01:30:00Z,maps/0130.npy,2021-02-19T01:30:00Z
+2021-02-19T02:00:00Z,maps/0200.npy,2021-02-19T02:00:00Z
+2021-02-19T02:30:00Z,maps/0230.npy,2021-02-19T02:30:00Z
+2021-02-19T03:00:00Z,maps/0300.npy,2021-02-19T03:00:00Z
+2021-02-19T03:30:00Z,maps/0330.npy,2021-02-19T03:30:00Z
+2021-02-19T04:00:00Z,maps/0400.npy,2021-02-19T04:00:00Z
+```
+
+Use actual timestamps, availability times and physical scaling bounds for your dataset. Customize [prediction_data.py](diffusionpack/main/prediction_data.py) and [prediction_unet.py](diffusionpack/backbone/prediction_unet.py) for a different forecasting task.
+
+In [run_prediction.py](run_prediction.py):
+
+```python
+mode = "check"
+
+train_config = PredictionTrainConfig(
+    csv_path="data/ssi/train.csv", resolution=512,
+    history_steps=5, future_steps=1, map_channels=1,
+    cadence_minutes=30, lead_minutes=30,
+    value_min=0.0, value_max=1200.0,  # Example scaling bounds
+    backbone="ddpm", model="light", base_channels=32,
+    batch_size=1, epochs=30, output="runs/ssi",
+)
+valid_csv = "data/ssi/valid.csv"
+test_csv = "data/ssi/test.csv"
+
+inference_config = PredictionInferenceConfig(
+    checkpoint="runs/ssi/latest.pt", csv_path=test_csv,
+    origin_time="2021-02-19T03:30:00Z",
+    sampler="ddim", sampling_steps=50, eta=0.0,
+    output="runs/ssi/forecasts",
+)
+```
+
+Run `python run_prediction.py` with `mode = "check"`, then `"train"`, then `"inference"`. The check verifies the temporal splits and a training batch; validation metrics are not calculated automatically. The example generates the 04:00 forecast from the five observations through 03:30. The output is saved as a `.npy` map. Change `sampling_steps` to 40 to use DDIM-40 without retraining.
+
+The SCRD backbone uses its existing DDPM sampler; the DDIM settings above apply to the basic Prediction U-Net.
 
 ## Update
 
@@ -64,10 +158,10 @@ If the dependencies are already installed, update only diffusionPack:
 python -m pip install --upgrade --force-reinstall --no-deps git+https://github.com/Pogjunan/diffusionPack.git
 ```
 
-For an editable installation, update the local repository instead:
+For a cloned repository, update the source:
 
 ```bash
-git pull --ff-only
+git pull
 ```
 
 ## References
