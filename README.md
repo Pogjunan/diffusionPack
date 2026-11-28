@@ -2,98 +2,109 @@
 
 ## Abstract
 
-diffusionPack is a PyTorch package for developing and studying diffusion-based generative models. It implements Denoising Diffusion Probabilistic Models (DDPM) and DDIM sampling, and aims to provide reusable implementations for unconditional and conditional generation, reducing the need to rebuild baselines for each research project. Later work will cover [Drifting Models](https://arxiv.org/abs/2602.04770).
+diffusionPack is a PyTorch package for studying generative models and developing baselines for future research.
 
 ## Implementation Principles
 
-Implementations are developed with reference to original research papers and publicly available author code. The focus is on understanding the underlying mathematics, keeping the implementation readable, and checking numerical behavior before using models in research. The package is intended to support reproduction, comparison, and extension of generative modeling methods.
+The implementations follow original research papers and the authors' released code where available. The project covers DDPM and DDIM, conditional restoration and prediction, and concludes with the planned implementation of Drifting Models.
+
+I have verified the current diffusion implementations against their mathematical formulations within the scope of my understanding. They are intended as research baselines for conditional generation, time-series forecasting, and the development of new diffusion methods. The priority is implementing the methods described in the original papers rather than optimizing GPU performance.
 
 ## Models
 
-| Task | Input | Output |
-| --- | --- | --- |
-| Generation | Gaussian noise | Image |
-| Restoration | Degraded image | Clean image |
-| Prediction | Past spatial maps | One or more future maps |
+| Model | Description |
+| --- | --- |
+| DDPM | Unconditional generation |
+| DDIM | Accelerated sampling |
+| Restoration | Conditional image restoration |
+| Prediction | Spatiotemporal forecasting |
+| Drifting Models | Planned |
 
-Choose `model = "original"` for the CIFAR-10 U-Net defaults or `model = "light"` for a smaller U-Net. The training schedule has 1,000 steps. Unconditional generation uses integer timestep conditioning. Restoration and the basic Prediction U-Net use continuous gamma conditioning during training and AdaGN.
-
-In [run.py](run.py), set `task` to `"unconditional"`, `"restore"` or `"prediction"` and `action` to `"train"` or `"inference"`. Run `python run.py`.
-
-For unconditional generation, restoration and the basic Prediction U-Net, choose `sampler="ddim"`, `sampling_steps=50`, `eta=0.0` in the inference config to sample with DDIM. The default sampler remains DDPM. DDIM reuses the trained model and training schedule. Choose `1 <= sampling_steps <= 1000` and `0 <= eta <= 1`; `eta=1` uses the posterior variance rather than the existing DDPM sampler's beta variance. For direct sampler calls, use `model.eval()`; `eta=0` gives deterministic sampling for a fixed initial noise and trajectory. The SCRD prediction and comparison paths retain their existing DDPM samplers.
+The following samples were generated using the light DDPM model on an NVIDIA RTX 3060.
 
 [![Unconditional DDPM Light samples](examples/light/grid.png)](examples/light)
 
-## References
-
-- DDPM. [Paper](https://arxiv.org/abs/2006.11239) · [Diffusion equations in TensorFlow](https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/diffusion_utils_2.py) · [U-Net](https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py)
-- DDIM. [Paper](https://arxiv.org/abs/2010.02502) · [Author code](https://github.com/ermongroup/ddim) · [Sampler](diffusionpack/ddim.py)
-- Restoration uses Palette-style channel concatenation and conditional noise prediction, with [SR3-style gamma sampling](https://arxiv.org/abs/2104.07636) (uniform step interval, then uniform interpolation between adjacent cumulative alphas) and [AdaGN](https://arxiv.org/abs/2105.05233). [Palette, Section 3](https://arxiv.org/html/2111.05826v2#S3) · [Independent PyTorch implementation](https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/136b29f58d0af6e5db9f3655d2891f5a855fcdaa/models/network.py)
-- Prediction extends the same conditional denoiser to a fixed history and joint future maps. [Forecast dataset](diffusionpack/main/prediction_data.py) · [Related work on past-frame conditioning](https://arxiv.org/abs/2205.09853)
-
-## Image Resolution
-
-Set one square `resolution` per training run. The U-Net automatically adds
-downsampling levels for large inputs when `channel_mult` is not supplied.
-The unconditional 32x32 architecture is unchanged.
-
-| Resolution | Channel multipliers | Smallest feature map |
-| --- | --- | --- |
-| 32 | (1, 2, 2, 2) | 4x4 |
-| 512 | (1, 2, 2, 2, 2, 2) | 16x16 |
-| 1024 | (1, 2, 2, 2, 2, 2, 2) | 16x16 |
-
-Default full attention remains at 16x16 and in the middle block.
-Explicitly choosing too few downsampling levels is rejected if the middle
-attention would exceed 32x32.
-
-```python
-TrainConfig(dataset="folder", resolution=512, model="light",
-            base_channels=32, batch_size=1)
-RestoreTrainConfig(dataset="paired", resolution=512,
-                   base_channels=32, batch_size=1)
-PredictionTrainConfig(resolution=1024, base_channels=32, batch_size=1)
-```
-
-Unconditional folder images are resized and center-cropped; restoration
-pairs are resized together. Forecast `.npy` maps must already match the
-configured resolution and are never resized. The trained resolution and
-architecture are saved in each checkpoint; a 32x32 checkpoint cannot be
-reused with a larger architecture. Large-image training still needs
-substantial GPU memory despite bounded attention resolution. Consider
-smaller batches, mixed precision, or training on spatial crops.
-
 ## Installation
 
+Install the package from GitHub to reuse its components in other research projects.
+
 ```bash
-pip install git+https://github.com/Pogjunan/diffusionPack.git
+python -m pip install git+https://github.com/Pogjunan/diffusionPack.git
 ```
+
+```python
+from diffusionpack.backbone.restore_unet import RestoreUNet
+from diffusionpack.restore import restore_loss, restore_sample
+from diffusionpack.ddim import ddim_sample
+```
+
+## Working with the Source
+
+Clone the repository for experiments and method development.
+
+```bash
+git clone https://github.com/Pogjunan/diffusionPack.git
+cd diffusionPack
+python -m pip install -e .
+```
+
+In [run.py](run.py), select `task` (`unconditional`, `restore`, or `prediction`) and `action` (`train` or `inference`), configure the dataset and model, and run:
+
+```bash
+python run.py
+```
+
+For inference with DDIM, set `sampler="ddim"`, `sampling_steps=50`, and `eta=0.0` in the corresponding inference configuration.
 
 ## Update
 
+If the dependencies are already installed, update only diffusionPack:
+
 ```bash
-pip install --upgrade --force-reinstall git+https://github.com/Pogjunan/diffusionPack.git
+python -m pip install --upgrade --force-reinstall --no-deps git+https://github.com/Pogjunan/diffusionPack.git
 ```
 
-## Forecasting with SSI maps
+For an editable installation, update the local repository instead:
 
-Set the grid size, channel multipliers and scaling bounds in [prediction_config.py](diffusionpack/prediction_config.py) or pass them to `PredictionTrainConfig` in [run_prediction.py](run_prediction.py). Choose the bounds from the training data or known physical limits. Forecasts can exceed these bounds. Each row in `train.csv` or `test.csv` contains `timestamp,path,available_at` for one NumPy grid. Use ISO 8601 timestamps with a UTC offset (e.g., `2026-01-01T12:00:00+09:00`). Times without an offset are treated as UTC. All times are converted to UTC. Split the series by time before training.
-
-`history_lag_minutes` is the interval from the last input map to forecast issue. `lead_minutes` runs from issue to the first target; later targets are spaced by `cadence_minutes`. With both set to 30, an issue at 12:00 uses maps through 11:30 and predicts 12:30. Each input must be available by 12:00.
-
-Set `history_steps` and `future_steps` in `PredictionTrainConfig`. For example, five past maps and four future maps with one channel each:
-
-```python
-PredictionTrainConfig(history_steps=5, future_steps=4, map_channels=1,
-                      cadence_minutes=30, lead_minutes=30)
+```bash
+git pull --ff-only
 ```
 
-Set the scaling bounds and `csv_path` before training. The model receives 9 channels and predicts 4 noise channels. It generates the four future maps jointly, then saves one `.npy` file per lead time. Maps from the same ensemble draw share a sample index. Inference does not require future targets. The default `future_steps=1` retains single-map prediction.
+## References
 
-Run `python run_prediction.py` first with `mode = "check"`, then with `mode = "train"` or `mode = "inference"`. Set `samples` to draw several forecasts per issue. Each call saves its forecast maps in a separate folder. When resuming training, use the same training CSV and data; their contents are not checked against the checkpoint.
+- **DDPM** — [Paper](https://arxiv.org/abs/2006.11239) · [Diffusion equations in TensorFlow](https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/diffusion_utils_2.py) · [U-Net](https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py)
+- **DDIM** — [Paper](https://arxiv.org/abs/2010.02502) · [Author code](https://github.com/ermongroup/ddim) · [Sampler](diffusionpack/ddim.py)
+- **Restoration** — [Palette](https://arxiv.org/abs/2111.05826) · [SR3](https://arxiv.org/abs/2104.07636) · [AdaGN](https://arxiv.org/abs/2105.05233) · [Independent PyTorch implementation](https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models)
+- **Prediction** — [MCVD](https://arxiv.org/abs/2205.09853)
+- **Drifting Models** — [Paper](https://arxiv.org/abs/2602.04770)
 
-## Conditional training and checkpoints
+### Application Example: SCRD
 
-For the basic conditional U-Net, gamma is sampled between `alpha_bars[t]` and `alpha_bars_prev[t]` during training. The same gamma is used to create the noisy target and as the input to the existing sinusoidal embedding. During sampling, the model receives the fixed `alpha_bars[t]` at each selected DDPM or DDIM step. The training schedule is unchanged. This is not a full SR3, Palette or MCVD reproduction.
+[SCRD](https://doi.org/10.1109/LGRS.2024.3486112) — Li et al., *IEEE Geoscience and Remote Sensing Letters*, 2024.
 
-The new conditional models need new checkpoints because the noise-level input and AdaGN projection sizes differ from the previous implementation. Unconditional checkpoint shapes are unchanged. DDIM selects a subset of the training noise schedule; it does not create a new beta schedule. Run `python -m pytest -q` for structural and CPU integration tests; actual forecast accuracy and GPU training require separate experiments.
+I independently implemented SCRD for precipitation nowcasting and adapted it to forecasting 512 × 512 surface solar irradiance maps.
+
+*Figures will be added.*
+
+<!--
+![Original SCRD results](examples/scrd/paper_results.png)
+
+*Results from the original paper.*
+
+![SSI forecasting example](examples/scrd/ssi_example.png)
+
+*Five observed SSI maps and the 30-min target (GT). The SCRD panel is an illustrative mock-up, not a model output; it will be replaced with experimental results.*
+-->
+
+## Discussion: Image Resolution
+
+Appendix B of DDPM uses four U-Net resolution levels for 32 × 32 images and six for 256 × 256 images, but does not specify a general rule for arbitrary resolutions. Inspired by this design, I defined the following default depth settings for different input sizes. These are my own settings, rather than exact reproductions of every architecture in the paper.
+
+| Input size | U-Net levels | Feature map sizes along the downsampling path |
+| --- | ---: | --- |
+| 32 × 32 | 4 | 32 → 16 → 8 → 4 |
+| 256 × 256 | 5 | 256 → 128 → 64 → 32 → 16 |
+| 512 × 512 | 6 | 512 → 256 → 128 → 64 → 32 → 16 |
+| 1024 × 1024 | 7 | 1024 → 512 → 256 → 128 → 64 → 32 → 16 |
+
+The depth and channel widths can be changed using `channel_mult` when constructing the U-Net.
