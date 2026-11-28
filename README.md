@@ -6,19 +6,19 @@ diffusionPack is a PyTorch package for developing and studying diffusion-based g
 
 ## Implementation Principles
 
-The implementations follow original research papers and the authors' released code where available. The project covers DDPM and DDIM, conditional restoration and prediction, and concludes with the planned implementation of Drifting Models.
+The implementations follow original research papers and the released code where available. The project covers DDPM and DDIM, conditional restoration and prediction, and Drifting Models (plan).
 
-I have verified the current diffusion implementations against their mathematical formulations within the scope of my understanding. They are intended as research baselines for conditional generation, time-series forecasting, and the development of new diffusion methods. The priority is implementing the methods described in the original papers rather than optimizing GPU performance.
+I have verified the current diffusion implementations against these mathematical formulations within the scope of my understanding. I intended as research baselines for conditional generation, time-series generation(etc. forecasting), and the development of new diffusion methods. The priority is implementing the methods described in the original papers.
 
 ## Models
 
-| Model | Description |
+| Method | Description |
 | --- | --- |
-| DDPM | Unconditional generation |
-| DDIM | Accelerated sampling |
-| Restoration | Conditional image restoration |
-| Prediction | Spatiotemporal forecasting |
-| Drifting Models | Planned |
+| DDPM | Markovian diffusion and stochastic generation |
+| DDIM | Non-Markovian diffusion and accelerated sampling |
+| Restoration | Conditional diffusion for image-to-image restoration |
+| Prediction | Conditional diffusion for spatiotemporal forecasting |
+| Drifting Models | Planned implementation |
 
 The following samples were generated using the light DDPM model on an NVIDIA RTX 3060.
 
